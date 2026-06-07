@@ -1,0 +1,110 @@
+# Copyright 2026 The olsrd-go Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3.8'
+
+services:
+  r1:
+    image: quay.io/frrouting/frr:8.5.1
+    container_name: olsr-int-r1
+    privileged: true
+    networks:
+      olsr-pair1:
+        ipv4_address: 10.10.1.10
+    volumes:
+      - ./../../bin/olsrd:/usr/local/bin/olsrd-go
+      - ./config/r1/olsrd.yaml:/etc/olsrd/olsrd.yaml
+      - ./config/daemons:/etc/frr/daemons
+    command: >
+      /bin/sh -c "
+      sleep 2 &&
+      /usr/lib/frr/zebra -d &&
+      sleep 1 &&
+      /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
+      "
+    ports:
+      - "8081:8081"
+
+  r2:
+    image: quay.io/frrouting/frr:8.5.1
+    container_name: olsr-int-r2
+    privileged: true
+    networks:
+      olsr-pair1:
+        ipv4_address: 10.10.1.20
+    volumes:
+      - ./../../bin/olsrd:/usr/local/bin/olsrd-go
+      - ./config/r2/olsrd.yaml:/etc/olsrd/olsrd.yaml
+      - ./config/daemons:/etc/frr/daemons
+    command: >
+      /bin/sh -c "
+      sleep 2 &&
+      /usr/lib/frr/zebra -d --log file:/tmp/zebra.log --log-level debug &&
+      sleep 1 &&
+      /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
+      "
+    ports:
+      - "8082:8082"
+
+  r3:
+    image: quay.io/frrouting/frr:8.5.1
+    container_name: olsr-int-r3
+    privileged: true
+    networks:
+      olsr-pair2:
+        ipv4_address: 10.10.2.30
+    volumes:
+      - ./../../bin/olsrd:/usr/local/bin/olsrd-go
+      - ./config/r3/olsrd.yaml:/etc/olsrd/olsrd.yaml
+      - ./config/daemons:/etc/frr/daemons
+    command: >
+      /bin/sh -c "
+      sleep 2 &&
+      /usr/lib/frr/zebra -d &&
+      sleep 1 &&
+      /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
+      "
+    ports:
+      - "8083:8083"
+
+  r4:
+    image: quay.io/frrouting/frr:8.5.1
+    container_name: olsr-int-r4
+    privileged: true
+    networks:
+      olsr-pair2:
+        ipv4_address: 10.10.2.40
+    volumes:
+      - ./../../bin/olsrd:/usr/local/bin/olsrd-go
+      - ./config/r4/olsrd.yaml:/etc/olsrd/olsrd.yaml
+      - ./config/daemons:/etc/frr/daemons
+    command: >
+      /bin/sh -c "
+      sleep 2 &&
+      /usr/lib/frr/zebra -d &&
+      sleep 1 &&
+      /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
+      "
+    ports:
+      - "8084:8084"
+
+networks:
+  olsr-pair1:
+    ipam:
+      config:
+        - subnet: 10.10.1.0/24
+  olsr-pair2:
+    ipam:
+      config:
+        - subnet: 10.10.2.0/24

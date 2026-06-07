@@ -1,0 +1,91 @@
+# Copyright 2026 The olsrd-go Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+- name: Ensure configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /etc/olsrd
+    - /var/lib/olsrd
+
+- name: Generate timestamp for backup
+  ansible.builtin.set_fact:
+    backup_timestamp: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+- name: Backup existing config if it exists
+  ansible.builtin.copy:
+    src: /etc/olsrd/olsrd.yaml
+    dest: "/etc/olsrd/olsrd.yaml.bak.{{ backup_timestamp }}"
+    remote_src: true
+    mode: '0600'
+  failed_when: false
+  changed_when: false
+
+- name: Copy binary to remote destination
+  ansible.builtin.copy:
+    src: ../../bin/olsrd
+    dest: /usr/local/bin/olsrd-go
+    mode: '0755'
+  register: binary_deploy
+
+- name: Write temporary configuration for validation
+  ansible.builtin.template:
+    src: olsrd.yaml.j2
+    dest: /tmp/olsrd_val.yaml
+    mode: '0600'
+
+- name: Validate temporary configuration
+  ansible.builtin.command:
+    cmd: /usr/local/bin/olsrd-go --check-config --config /tmp/olsrd_val.yaml
+  register: val_result
+  failed_when: val_result.rc != 0
+  changed_when: false
+
+- name: Deploy validated configuration
+  ansible.builtin.copy:
+    src: /tmp/olsrd_val.yaml
+    dest: /etc/olsrd/olsrd.yaml
+    remote_src: true
+    mode: '0644'
+  notify: Restart olsrd
+
+- name: Clean up temporary validation file
+  ansible.builtin.file:
+    path: /tmp/olsrd_val.yaml
+    state: absent
+
+- name: Deploy systemd unit file
+  ansible.builtin.copy:
+    src: ../../deployments/olsrd.service
+    dest: /etc/systemd/system/olsrd.service
+    mode: '0644'
+  notify: Restart olsrd
+
+- name: Flush handlers to execute restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start systemd service
+  ansible.builtin.systemd:
+    name: olsrd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Rolling update stabilization wait
+  ansible.builtin.pause:
+    seconds: 5
+    prompt: "Waiting for neighbor stabilization on {{ inventory_hostname }}"

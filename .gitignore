@@ -1,0 +1,14 @@
+# Compiled binaries
+/bin/
+
+# OS generated files
+.DS_Store
+
+# Test output and profiles
+*.out
+*.test
+*.prof
+
+# Application state snapshots
+/var/lib/olsrd/
+*snapshot.json
