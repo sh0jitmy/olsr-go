@@ -21,7 +21,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 	vnetlink "github.com/vishvananda/netlink"
 )
 

@@ -1,9 +1,9 @@
 # olsrd-go: Go言語によるOLSRルーティングデーモン
 
-[![CI Status](https://github.com/shjtmy/olsr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/shjtmy/olsr-go/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/shjtmy/olsr-go)](https://goreportcard.com/report/github.com/shjtmy/olsr-go)
+[![CI Status](https://github.com/sh0jitmy/olsr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sh0jitmy/olsr-go/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sh0jitmy/olsr-go)](https://goreportcard.com/report/github.com/sh0jitmy/olsr-go)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shjtmy/olsr-go)](go.mod)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sh0jitmy/olsr-go)](go.mod)
 
 `olsrd-go` は、アドホックネットワークおよびメッシュネットワーク向けの **Optimized Link State Routing Protocol (OLSR)** (RFC 3626) のGo言語実装です。ユニキャスト経路伝搬のための **FRRouting (FRR) Zebra** との統合、およびマルチキャスト転送キャッシュ管理（MOLSR）のための直接的なLinuxカーネルプログラミング機能を備えています。
 

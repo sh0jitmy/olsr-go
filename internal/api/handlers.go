@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/metrics"
+	"github.com/sh0jitmy/olsr-go/internal/metrics"
 )
 
 // Health APIs
@@ -53,10 +53,10 @@ func (s *APIServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	// 3. ZAPI client should be online
 	if !zapiOk || !ifacesOk || !spfOk {
 		jsonResponse(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"status":      "unready",
-			"zapi":        zapiOk,
-			"spf":         spfOk,
-			"interfaces":  ifacesOk,
+			"status":     "unready",
+			"zapi":       zapiOk,
+			"spf":        spfOk,
+			"interfaces": ifacesOk,
 		})
 		return
 	}

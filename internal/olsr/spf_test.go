@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 func TestSPFRouteCalculation(t *testing.T) {
@@ -92,7 +92,7 @@ func TestSPFRouteCalculation(t *testing.T) {
 	// - 4.4.4.4/32 (metric 2, next hop 2.2.2.2, iface 10)
 	// - 5.5.5.5/32 (metric 3, next hop 2.2.2.2, iface 10)
 	// - 192.168.100.0/24 (metric 4, next hop 2.2.2.2, iface 10)
-	
+
 	routeMap := make(map[string]Route)
 	for _, r := range routes {
 		routeMap[r.Prefix] = r

@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type TopologyTuple struct {
@@ -39,9 +39,9 @@ type DuplicateTuple struct {
 type TopologyManager struct {
 	mu            sync.RWMutex
 	topology      map[string]map[string]*TopologyTuple // Key: destIP -> lastIP -> Tuple
-	duplicates    map[string]map[uint16]time.Time     // Key: originatorIP -> seqNum -> ExpirationTime
-	midMap        map[string][]string                 // Key: primaryIP -> aliasIPs
-	reverseMidMap map[string]string                   // Key: aliasIP -> primaryIP
+	duplicates    map[string]map[uint16]time.Time      // Key: originatorIP -> seqNum -> ExpirationTime
+	midMap        map[string][]string                  // Key: primaryIP -> aliasIPs
+	reverseMidMap map[string]string                    // Key: aliasIP -> primaryIP
 	eventBus      *eventbus.EventBus
 }
 

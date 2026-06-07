@@ -26,11 +26,11 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/shjtmy/olsr-go/internal/config"
-	"github.com/shjtmy/olsr-go/internal/eventbus"
-	"github.com/shjtmy/olsr-go/internal/netlink"
-	"github.com/shjtmy/olsr-go/internal/olsr"
-	"github.com/shjtmy/olsr-go/internal/zebra"
+	"github.com/sh0jitmy/olsr-go/internal/config"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/netlink"
+	"github.com/sh0jitmy/olsr-go/internal/olsr"
+	"github.com/sh0jitmy/olsr-go/internal/zebra"
 )
 
 func createTestJWT(t *testing.T, secret, subject string) string {
@@ -49,7 +49,7 @@ func createTestJWT(t *testing.T, secret, subject string) string {
 func setupAPIServer(t *testing.T, jwtSecret string) (*APIServer, string) {
 	t.Helper()
 	bus := eventbus.NewEventBus(10, 10*time.Millisecond)
-	
+
 	// Create mock config file
 	configContent := fmt.Sprintf(`
 router_id: 1.1.1.1
@@ -60,7 +60,7 @@ tc_interval: 5s
 jwt_secret: %s
 api_port: 0 # random
 `, jwtSecret)
-	
+
 	tmpFile := filepath.Join(t.TempDir(), "olsrd.yaml")
 	if err := os.WriteFile(tmpFile, []byte(configContent), 0644); err != nil {
 		t.Fatalf("failed to write mock config: %v", err)
@@ -88,8 +88,6 @@ api_port: 0 # random
 	token := createTestJWT(t, jwtSecret, "test-admin")
 	return server, token
 }
-
-
 
 func TestAPIHealthz(t *testing.T) {
 	server, _ := setupAPIServer(t, "my-secret")
