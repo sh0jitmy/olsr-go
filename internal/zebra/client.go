@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 // ZAPI Unicast Command Constants
@@ -36,13 +36,13 @@ const (
 )
 
 type ZAPIClient struct {
-	mu           sync.Mutex
-	socketPath   string
-	conn         net.Conn
-	connected    bool
-	eventBus     *eventbus.EventBus
-	ctx          context.Context
-	cancel       context.CancelFunc
+	mu            sync.Mutex
+	socketPath    string
+	conn          net.Conn
+	connected     bool
+	eventBus      *eventbus.EventBus
+	ctx           context.Context
+	cancel        context.CancelFunc
 	reconnectChan chan struct{}
 
 	// Metrics
@@ -236,12 +236,12 @@ func (c *ZAPIClient) syncRoutes() {
 	}
 	// Multicast routes are programmed directly in the kernel, not via ZAPI.
 	/*
-	if c.GetActiveMulticastRoutes != nil {
-		routes := c.GetActiveMulticastRoutes()
-		for _, r := range routes {
-			_ = c.AddMulticastRoute(r.SourceIP, r.GroupID, r.IIF, r.OIFs)
+		if c.GetActiveMulticastRoutes != nil {
+			routes := c.GetActiveMulticastRoutes()
+			for _, r := range routes {
+				_ = c.AddMulticastRoute(r.SourceIP, r.GroupID, r.IIF, r.OIFs)
+			}
 		}
-	}
 	*/
 }
 
@@ -306,7 +306,7 @@ func buildHelloMessage() []byte {
 	binary.Write(buf, binary.BigEndian, uint16(0))
 	buf.WriteByte(ZapiMarker)
 	buf.WriteByte(ZapiVersion6)
-	binary.Write(buf, binary.BigEndian, uint32(0)) // VRF ID (uint32)
+	binary.Write(buf, binary.BigEndian, uint32(0))  // VRF ID (uint32)
 	binary.Write(buf, binary.BigEndian, uint16(18)) // Command (uint16)
 
 	// Body
@@ -342,27 +342,27 @@ func buildUnicastRouteMessage(cmd uint16, prefix string, nexthop string, ifindex
 	binary.Write(buf, binary.BigEndian, cmd)       // Command (uint16)
 
 	// --- Body ---
-	buf.WriteByte(RouteOlsr)                       // Route Type (11)
-	binary.Write(buf, binary.BigEndian, uint16(0)) // Instance
-	binary.Write(buf, binary.BigEndian, uint32(0)) // Flags
+	buf.WriteByte(RouteOlsr)                          // Route Type (11)
+	binary.Write(buf, binary.BigEndian, uint16(0))    // Instance
+	binary.Write(buf, binary.BigEndian, uint32(0))    // Flags
 	binary.Write(buf, binary.BigEndian, uint32(0x07)) // Message Flags: NEXTHOP (0x01) | DISTANCE (0x02) | METRIC (0x04)
-	buf.WriteByte(1)                               // SAFI (UNICAST = 1)
-	buf.WriteByte(2)                               // Family (AF_INET = 2)
-	
+	buf.WriteByte(1)                                  // SAFI (UNICAST = 1)
+	buf.WriteByte(2)                                  // Family (AF_INET = 2)
+
 	psize := (ones + 7) / 8
-	buf.WriteByte(uint8(ones))                     // Prefix Length
-	buf.Write(ip4[:psize])                         // Prefix IP
+	buf.WriteByte(uint8(ones)) // Prefix Length
+	buf.Write(ip4[:psize])     // Prefix IP
 
 	// Nexthops
-	binary.Write(buf, binary.BigEndian, uint16(1)) // Nexthop Count (uint16)
-	binary.Write(buf, binary.BigEndian, uint32(0)) // Nexthop VRF ID (uint32)
-	buf.WriteByte(2)                               // Nexthop Type (NEXTHOP_TYPE_IPV4 = 2)
-	buf.WriteByte(0)                               // Nexthop Flags (uint8)
-	buf.Write(nh4)                                 // Nexthop Address
+	binary.Write(buf, binary.BigEndian, uint16(1))       // Nexthop Count (uint16)
+	binary.Write(buf, binary.BigEndian, uint32(0))       // Nexthop VRF ID (uint32)
+	buf.WriteByte(2)                                     // Nexthop Type (NEXTHOP_TYPE_IPV4 = 2)
+	buf.WriteByte(0)                                     // Nexthop Flags (uint8)
+	buf.Write(nh4)                                       // Nexthop Address
 	binary.Write(buf, binary.BigEndian, uint32(ifindex)) // Nexthop Ifindex (uint32)
 
 	// Distance
-	buf.WriteByte(150)                             // Distance (uint8)
+	buf.WriteByte(150) // Distance (uint8)
 
 	// Metrics
 	binary.Write(buf, binary.BigEndian, uint32(metric)) // Metric

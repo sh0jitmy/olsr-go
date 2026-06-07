@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type HNAEntry struct {
@@ -32,7 +32,7 @@ type HNAEntry struct {
 
 type HNAManager struct {
 	mu        sync.RWMutex
-	localHNAs map[string]net.IPNet      // Key: network CIDR string
+	localHNAs map[string]net.IPNet            // Key: network CIDR string
 	hnaSet    map[string]map[string]*HNAEntry // Key: network CIDR string -> Gateway IP -> Entry
 	eventBus  *eventbus.EventBus
 }

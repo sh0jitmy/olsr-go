@@ -22,14 +22,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type Route struct {
-	Prefix      string // CIDR format, e.g., "10.0.0.2/32"
-	NextHop     string // Next hop IP
-	Metric      int
-	IfaceIndex  int
+	Prefix     string // CIDR format, e.g., "10.0.0.2/32"
+	NextHop    string // Next hop IP
+	Metric     int
+	IfaceIndex int
 }
 
 // Priority Queue item for Dijkstra
@@ -234,7 +234,7 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 		nextHop, ifaceIdx, ok := resolveNextHop(gw)
 		if ok {
 			prefix := entry.Network.String()
-			
+
 			// If route already exists (e.g. from a different gateway), keep the one with shorter path
 			if existing, ok := newRoutes[prefix]; !ok || gwDist < existing.Metric {
 				newRoutes[prefix] = Route{

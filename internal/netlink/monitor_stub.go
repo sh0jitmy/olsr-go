@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type StubMonitor struct {

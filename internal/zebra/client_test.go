@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 func TestZAPIClientUnicastAndMulticast(t *testing.T) {
@@ -152,7 +152,7 @@ func TestZAPIClientOfflineError(t *testing.T) {
 	bus := eventbus.NewEventBus(10, 10*time.Millisecond)
 	// Try to connect to non-existent path
 	client := NewZAPIClient("/tmp/nonexistent-zebra-socket-path", bus)
-	
+
 	err := client.AddUnicastRoute("10.0.0.0/24", "192.168.1.1", 5, 1)
 	if err == nil {
 		t.Errorf("expected error on offline client")

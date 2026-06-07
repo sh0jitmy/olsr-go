@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type SourceClaim struct {
@@ -47,14 +47,14 @@ type MulticastForwardingEntry struct {
 }
 
 type MOLSRManager struct {
-	mu            sync.RWMutex
-	routerID      string
-	sourceClaims  map[string]map[string]*SourceClaim       // Key: GroupIP -> SourceIP -> Claim
+	mu             sync.RWMutex
+	routerID       string
+	sourceClaims   map[string]map[string]*SourceClaim                   // Key: GroupIP -> SourceIP -> Claim
 	confirmParents map[string]map[string]map[string]*ConfirmParentEntry // Key: GroupIP -> SourceIP -> ChildIP -> Entry
-	localGroup    map[string]bool                          // Groups this router has locally joined
-	activeMfc     map[string]*MulticastForwardingEntry     // Key: "Source:Group" -> Forwarding state
-	eventBus      *eventbus.EventBus
-	
+	localGroup     map[string]bool                                      // Groups this router has locally joined
+	activeMfc      map[string]*MulticastForwardingEntry                 // Key: "Source:Group" -> Forwarding state
+	eventBus       *eventbus.EventBus
+
 	// Lookup function to find the interface index toward a next-hop IP
 	IfaceIndexLookup func(nextHopIP string) (int, error)
 }
@@ -308,7 +308,7 @@ func (m *MOLSRManager) RecalculateMroutes(ctx context.Context, getUnicastNextHop
 				// No route to source, cannot forward
 				continue
 			}
-			
+
 			// Resolve Outgoing Interfaces (OIFs) toward each child node
 			oifs := make([]int, 0)
 			oifSeen := make(map[int]bool)

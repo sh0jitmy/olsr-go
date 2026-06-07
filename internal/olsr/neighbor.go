@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 type LinkState int
@@ -71,11 +71,11 @@ type TwoHopTuple struct {
 type NeighborManager struct {
 	mu           sync.RWMutex
 	routerID     string
-	links        map[string]*LinkTuple        // Key: neighbor IP
-	neighbors    map[string]*NeighborTuple    // Key: neighbor IP
+	links        map[string]*LinkTuple           // Key: neighbor IP
+	neighbors    map[string]*NeighborTuple       // Key: neighbor IP
 	twoHopLinks  map[string]map[string]time.Time // Key: 1-hop IP -> 2-hop IP -> ExpirationTime
-	mprSet       map[string]bool              // Key: neighbor IP
-	mprSelectors map[string]time.Time         // Key: selector IP -> ExpirationTime
+	mprSet       map[string]bool                 // Key: neighbor IP
+	mprSelectors map[string]time.Time            // Key: selector IP -> ExpirationTime
 	eventBus     *eventbus.EventBus
 }
 

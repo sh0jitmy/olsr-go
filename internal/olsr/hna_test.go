@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/sh0jitmy/olsr-go/internal/eventbus"
 )
 
 func TestHNAManagerLocal(t *testing.T) {
