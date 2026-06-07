@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-version: 2
+version: "2"
 
 run:
   timeout: 5m
@@ -19,39 +19,4 @@ run:
   tests: true
 
 linters:
-  disable-all: true
-  enable:
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - bodyclose
-  disable:
-    - errcheck
-
-issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-      - name: package-comments
-        disabled: true
-      - name: unused-parameter
-        disabled: true
-      - name: empty-block
-        disabled: true
-  gosec:
-    excludes:
-      - G115 # integer overflow conversion
-      - G301 # directory permissions 0755
-      - G306 # WriteFile permissions 0644
-      - G101 # potential hardcoded credentials in e2e test
-      - G404 # weak random number generator for jitter
-      - G304 # file paths from config variables
-      - G112 # slowloris read header timeout
-      - G706 # log injection taint analysis
+  default: all
