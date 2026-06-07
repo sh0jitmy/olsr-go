@@ -1,4 +1,4 @@
-module github.com/shjtmy/frr-olsr
+module github.com/shjtmy/olsr-go
 
 go 1.26.4
 

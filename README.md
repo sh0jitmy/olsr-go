@@ -1,9 +1,9 @@
 # olsrd-go: OLSR Routing Daemon in Go
 
-[![CI Status](https://github.com/shjtmy/frr-olsr/actions/workflows/ci.yml/badge.svg)](https://github.com/shjtmy/frr-olsr/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/shjtmy/frr-olsr)](https://goreportcard.com/report/github.com/shjtmy/frr-olsr)
+[![CI Status](https://github.com/shjtmy/olsr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/shjtmy/olsr-go/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/shjtmy/olsr-go)](https://goreportcard.com/report/github.com/shjtmy/olsr-go)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shjtmy/frr-olsr)](go.mod)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shjtmy/olsr-go)](go.mod)
 
 `olsrd-go` is a Go-based implementation of the **Optimized Link State Routing Protocol (OLSR)** (RFC 3626). It integrates with **FRRouting (FRR) Zebra** for unicast route propagation and directly interacts with the Linux kernel's multicast routing subsystem (`ipmr`) to support Multicast OLSR (MOLSR).
 

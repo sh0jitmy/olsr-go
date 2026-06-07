@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shjtmy/frr-olsr/internal/metrics"
+	"github.com/shjtmy/olsr-go/internal/metrics"
 )
 
 // Health APIs

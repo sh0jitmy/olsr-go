@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shjtmy/frr-olsr/internal/eventbus"
+	"github.com/shjtmy/olsr-go/internal/eventbus"
 )
 
 func TestZAPIClientUnicastAndMulticast(t *testing.T) {

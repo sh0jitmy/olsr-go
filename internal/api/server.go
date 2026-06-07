@@ -27,10 +27,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/shjtmy/frr-olsr/internal/config"
-	"github.com/shjtmy/frr-olsr/internal/netlink"
-	"github.com/shjtmy/frr-olsr/internal/olsr"
-	"github.com/shjtmy/frr-olsr/internal/zebra"
+	"github.com/shjtmy/olsr-go/internal/config"
+	"github.com/shjtmy/olsr-go/internal/netlink"
+	"github.com/shjtmy/olsr-go/internal/olsr"
+	"github.com/shjtmy/olsr-go/internal/zebra"
 )
 
 type APIServer struct {

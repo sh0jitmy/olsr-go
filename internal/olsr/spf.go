@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shjtmy/frr-olsr/internal/eventbus"
+	"github.com/shjtmy/olsr-go/internal/eventbus"
 )
 
 type Route struct {

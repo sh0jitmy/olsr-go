@@ -23,8 +23,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shjtmy/frr-olsr/internal/config"
-	"github.com/shjtmy/frr-olsr/internal/eventbus"
+	"github.com/shjtmy/olsr-go/internal/config"
+	"github.com/shjtmy/olsr-go/internal/eventbus"
 )
 
 const (

@@ -26,15 +26,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shjtmy/frr-olsr/internal/api"
-	"github.com/shjtmy/frr-olsr/internal/config"
-	"github.com/shjtmy/frr-olsr/internal/eventbus"
-	"github.com/shjtmy/frr-olsr/internal/metrics"
-	"github.com/shjtmy/frr-olsr/internal/mroute"
-	"github.com/shjtmy/frr-olsr/internal/netlink"
-	"github.com/shjtmy/frr-olsr/internal/olsr"
-	"github.com/shjtmy/frr-olsr/internal/uroute"
-	"github.com/shjtmy/frr-olsr/internal/zebra"
+	"github.com/shjtmy/olsr-go/internal/api"
+	"github.com/shjtmy/olsr-go/internal/config"
+	"github.com/shjtmy/olsr-go/internal/eventbus"
+	"github.com/shjtmy/olsr-go/internal/metrics"
+	"github.com/shjtmy/olsr-go/internal/mroute"
+	"github.com/shjtmy/olsr-go/internal/netlink"
+	"github.com/shjtmy/olsr-go/internal/olsr"
+	"github.com/shjtmy/olsr-go/internal/uroute"
+	"github.com/shjtmy/olsr-go/internal/zebra"
 )
 
 type Daemon struct {
