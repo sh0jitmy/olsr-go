@@ -23,7 +23,7 @@ build:
 	$(GO) build -o $(BIN) ./cmd/olsrd/
 
 test:
-	$(GO) test -race ./...
+	$(GO) test -race ./internal/...
 
 lint:
 	golangci-lint run
