@@ -1,4 +1,4 @@
-module github.com/sh0jtmy/olsr-go
+module github.com/sh0jitmy/olsr-go
 
 go 1.26.4
 
