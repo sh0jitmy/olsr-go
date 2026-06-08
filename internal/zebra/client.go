@@ -41,7 +41,6 @@ type ZAPIClient struct {
 	conn          net.Conn
 	connected     bool
 	eventBus      *eventbus.EventBus
-	ctx           context.Context
 	cancel        context.CancelFunc
 	reconnectChan chan struct{}
 
@@ -69,28 +68,31 @@ type MulticastRouteInfo struct {
 }
 
 func NewZAPIClient(socketPath string, bus *eventbus.EventBus) *ZAPIClient {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &ZAPIClient{
 		socketPath:    socketPath,
 		eventBus:      bus,
-		ctx:           ctx,
-		cancel:        cancel,
 		reconnectChan: make(chan struct{}, 1),
 	}
 }
 
 // Start initiates the Zebra connection loop.
 func (c *ZAPIClient) Start(ctx context.Context) {
-	go c.connectionLoop()
+	c.mu.Lock()
+	var runCtx context.Context
+	runCtx, c.cancel = context.WithCancel(ctx)
+	c.mu.Unlock()
+	go c.connectionLoop(runCtx)
 	c.reconnectChan <- struct{}{} // Trigger initial connection
 }
 
 // Stop shuts down the client and closes connection.
 func (c *ZAPIClient) Stop() {
-	c.cancel()
 	c.mu.Lock()
+	if c.cancel != nil {
+		c.cancel()
+	}
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 	c.connected = false
 	c.mu.Unlock()
@@ -108,13 +110,13 @@ func (c *ZAPIClient) GetMetrics() (connected bool, tx uint64, failures uint64) {
 	return c.connected, c.txTotal, c.failureTotal
 }
 
-func (c *ZAPIClient) connectionLoop() {
+func (c *ZAPIClient) connectionLoop(ctx context.Context) {
 	backoff := 1 * time.Second
 	maxBackoff := 30 * time.Second
 
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-c.reconnectChan:
 			err := c.connect()
@@ -125,6 +127,7 @@ func (c *ZAPIClient) connectionLoop() {
 				slog.Error("ZAPI connect failed", "socket", c.socketPath, "error", err)
 
 				// Exponential backoff with jitter
+				//nolint:gosec // G404: weak random number generator is safe/appropriate for network backoff jitter
 				jitter := time.Duration(rand.Int63n(int64(backoff / 2)))
 				sleepTime := backoff + jitter
 				if backoff < maxBackoff {
@@ -132,13 +135,13 @@ func (c *ZAPIClient) connectionLoop() {
 				}
 
 				// Publish metrics update (ZAPI disconnected)
-				c.eventBus.Publish(c.ctx, eventbus.Event{
+				c.eventBus.Publish(ctx, eventbus.Event{
 					Type: eventbus.EventRouteInstall,
 					Data: map[string]interface{}{"status": "disconnected"},
 				})
 
 				select {
-				case <-c.ctx.Done():
+				case <-ctx.Done():
 					return
 				case <-time.After(sleepTime):
 					// Retry connection
@@ -156,7 +159,7 @@ func (c *ZAPIClient) connectionLoop() {
 				slog.Info("ZAPI connected successfully", "socket", c.socketPath)
 
 				// Publish metrics update (ZAPI connected)
-				c.eventBus.Publish(c.ctx, eventbus.Event{
+				c.eventBus.Publish(ctx, eventbus.Event{
 					Type: eventbus.EventRouteInstall,
 					Data: map[string]interface{}{"status": "connected"},
 				})
@@ -174,7 +177,7 @@ func (c *ZAPIClient) connectionLoop() {
 func (c *ZAPIClient) connect() error {
 	c.mu.Lock()
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 	c.connected = false
 	c.mu.Unlock()
@@ -189,7 +192,7 @@ func (c *ZAPIClient) connect() error {
 	helloMsg := buildHelloMessage()
 	_, err = conn.Write(helloMsg)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return err
 	}
 
@@ -303,20 +306,24 @@ func (c *ZAPIClient) send(data []byte) error {
 func buildHelloMessage() []byte {
 	buf := new(bytes.Buffer)
 	// Header (Size placeholder, Marker, Version, VRF, Command)
-	binary.Write(buf, binary.BigEndian, uint16(0))
+	_ = binary.Write(buf, binary.BigEndian, uint16(0))
 	buf.WriteByte(ZapiMarker)
 	buf.WriteByte(ZapiVersion6)
-	binary.Write(buf, binary.BigEndian, uint32(0))  // VRF ID (uint32)
-	binary.Write(buf, binary.BigEndian, uint16(18)) // Command (uint16)
+	_ = binary.Write(buf, binary.BigEndian, uint32(0))  // VRF ID (uint32)
+	_ = binary.Write(buf, binary.BigEndian, uint16(18)) // Command (uint16)
 
 	// Body
 	buf.WriteByte(RouteOlsr)                       // Route Type (OLSR)
-	binary.Write(buf, binary.BigEndian, uint16(0)) // Instance
-	binary.Write(buf, binary.BigEndian, uint32(0)) // Session ID (uint32)
+	_ = binary.Write(buf, binary.BigEndian, uint16(0)) // Instance
+	_ = binary.Write(buf, binary.BigEndian, uint32(0)) // Session ID (uint32)
 	buf.WriteByte(0)                               // Receive Notify (uint8)
 	buf.WriteByte(0)                               // Synchronous (uint8)
 
 	data := buf.Bytes()
+	if len(data) > 65535 {
+		panic("hello message size exceeds maximum uint16 size")
+	}
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	binary.BigEndian.PutUint16(data[0:2], uint16(len(data)))
 	return data
 }
@@ -335,39 +342,54 @@ func buildUnicastRouteMessage(cmd uint16, prefix string, nexthop string, ifindex
 
 	buf := new(bytes.Buffer)
 	// --- Header ---
-	binary.Write(buf, binary.BigEndian, uint16(0))
+	_ = binary.Write(buf, binary.BigEndian, uint16(0))
 	buf.WriteByte(ZapiMarker)
 	buf.WriteByte(ZapiVersion6)
-	binary.Write(buf, binary.BigEndian, uint32(0)) // VRF ID (uint32)
-	binary.Write(buf, binary.BigEndian, cmd)       // Command (uint16)
+	_ = binary.Write(buf, binary.BigEndian, uint32(0)) // VRF ID (uint32)
+	_ = binary.Write(buf, binary.BigEndian, cmd)       // Command (uint16)
 
 	// --- Body ---
 	buf.WriteByte(RouteOlsr)                          // Route Type (11)
-	binary.Write(buf, binary.BigEndian, uint16(0))    // Instance
-	binary.Write(buf, binary.BigEndian, uint32(0))    // Flags
-	binary.Write(buf, binary.BigEndian, uint32(0x07)) // Message Flags: NEXTHOP (0x01) | DISTANCE (0x02) | METRIC (0x04)
+	_ = binary.Write(buf, binary.BigEndian, uint16(0))    // Instance
+	_ = binary.Write(buf, binary.BigEndian, uint32(0))    // Flags
+	_ = binary.Write(buf, binary.BigEndian, uint32(0x07)) // Message Flags: NEXTHOP (0x01) | DISTANCE (0x02) | METRIC (0x04)
 	buf.WriteByte(1)                                  // SAFI (UNICAST = 1)
 	buf.WriteByte(2)                                  // Family (AF_INET = 2)
 
 	psize := (ones + 7) / 8
+	if ones < 0 || ones > 32 {
+		return nil, fmt.Errorf("invalid IPv4 prefix length: %d", ones)
+	}
 	buf.WriteByte(uint8(ones)) // Prefix Length
 	buf.Write(ip4[:psize])     // Prefix IP
 
 	// Nexthops
-	binary.Write(buf, binary.BigEndian, uint16(1))       // Nexthop Count (uint16)
-	binary.Write(buf, binary.BigEndian, uint32(0))       // Nexthop VRF ID (uint32)
+	_ = binary.Write(buf, binary.BigEndian, uint16(1))       // Nexthop Count (uint16)
+	_ = binary.Write(buf, binary.BigEndian, uint32(0))       // Nexthop VRF ID (uint32)
 	buf.WriteByte(2)                                     // Nexthop Type (NEXTHOP_TYPE_IPV4 = 2)
 	buf.WriteByte(0)                                     // Nexthop Flags (uint8)
 	buf.Write(nh4)                                       // Nexthop Address
-	binary.Write(buf, binary.BigEndian, uint32(ifindex)) // Nexthop Ifindex (uint32)
+	if ifindex < 0 {
+		return nil, fmt.Errorf("invalid interface index: %d", ifindex)
+	}
+	//nolint:gosec // G115: value is pre-validated to be >= 0
+	_ = binary.Write(buf, binary.BigEndian, uint32(ifindex)) // Nexthop Ifindex (uint32)
 
 	// Distance
 	buf.WriteByte(150) // Distance (uint8)
 
 	// Metrics
-	binary.Write(buf, binary.BigEndian, uint32(metric)) // Metric
+	if metric < 0 {
+		return nil, fmt.Errorf("invalid metric: %d", metric)
+	}
+	//nolint:gosec // G115: value is pre-validated to be >= 0
+	_ = binary.Write(buf, binary.BigEndian, uint32(metric)) // Metric
 
 	data := buf.Bytes()
+	if len(data) > 65535 {
+		return nil, fmt.Errorf("unicast route message size exceeds maximum uint16 size")
+	}
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	binary.BigEndian.PutUint16(data[0:2], uint16(len(data)))
 	return data, nil
 }

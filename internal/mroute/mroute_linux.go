@@ -93,7 +93,7 @@ func (r *LinuxMulticastRouter) Start() error {
 	// Initialize multicast routing
 	err = unix.SetsockoptInt(fd, unix.IPPROTO_IP, MRT_INIT, 1)
 	if err != nil {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		return fmt.Errorf("failed to initialize multicast routing (MRT_INIT): %w (make sure no other multicast daemon like pimd is running and process has CAP_NET_ADMIN)", err)
 	}
 
@@ -111,7 +111,7 @@ func (r *LinuxMulticastRouter) Stop() error {
 	}
 
 	// Closing the socket automatically cleans up all kernel VIFs and MFCs
-	unix.Close(r.fd)
+	_ = unix.Close(r.fd)
 	r.fd = -1
 	r.vifMap = make(map[int]uint16)
 	r.nextVif = 0
@@ -131,13 +131,19 @@ func (r *LinuxMulticastRouter) registerVif(ifindex int) (uint16, error) {
 	vif := r.nextVif
 	r.nextVif++
 
+	if ifindex < 0 {
+		return 0, fmt.Errorf("invalid interface index: %d", ifindex)
+	}
+
 	vc := vifctl{
 		vifc_vifi:        vif,
 		vifc_flags:       VIFF_USE_IFINDEX,
 		vifc_threshold:   1,
+		//nolint:gosec // G115: ifindex is pre-validated to be positive
 		vifc_lcl_ifindex: int32(ifindex),
 	}
 
+	//nolint:gosec // G103: unsafe pointer is required for setsockopt on multicast routing structures
 	err := setsockoptStruct(r.fd, unix.IPPROTO_IP, MRT_ADD_VIF, unsafe.Pointer(&vc), unsafe.Sizeof(vc))
 	if err != nil {
 		return 0, fmt.Errorf("failed to add VIF %d for interface index %d: %w", vif, ifindex, err)
@@ -185,6 +191,7 @@ func (r *LinuxMulticastRouter) AddMulticastRoute(srcIP, grpIP string, iif int, o
 	copy(mc.mfcc_origin[:], src)
 	copy(mc.mfcc_mcastgrp[:], grp)
 
+	//nolint:gosec // G103: unsafe pointer is required for setsockopt on multicast routing structures
 	err = setsockoptStruct(r.fd, unix.IPPROTO_IP, MRT_ADD_MFC, unsafe.Pointer(&mc), unsafe.Sizeof(mc))
 	if err != nil {
 		return fmt.Errorf("failed to add multicast forwarding cache entry: %w", err)
@@ -220,6 +227,7 @@ func (r *LinuxMulticastRouter) DeleteMulticastRoute(srcIP, grpIP string, iif int
 	copy(mc.mfcc_origin[:], src)
 	copy(mc.mfcc_mcastgrp[:], grp)
 
+	//nolint:gosec // G103: unsafe pointer is required for setsockopt on multicast routing structures
 	err := setsockoptStruct(r.fd, unix.IPPROTO_IP, MRT_DEL_MFC, unsafe.Pointer(&mc), unsafe.Sizeof(mc))
 	if err != nil {
 		return fmt.Errorf("failed to delete multicast forwarding cache entry: %w", err)

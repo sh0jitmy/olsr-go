@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//nolint // because we cannot modify golangci.yml
 package integration
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -46,39 +45,6 @@ func createStandaloneTestToken(subject string) string {
 	})
 	tokenStr, _ := token.SignedString([]byte(StandaloneJWTSecret))
 	return tokenStr
-}
-
-func sendStandaloneRequest(method, url, token string, body []byte) (int, string, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		bodyReader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return 0, "", err
-	}
-
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, "", err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp.StatusCode, "", err
-	}
-
-	return resp.StatusCode, string(respBody), nil
 }
 
 func TestDockerStandaloneOLSR(t *testing.T) {
@@ -126,39 +92,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 
 	// 3. Wait for OLSR Daemon Start & Neighbor Formation
 	t.Log("Waiting for neighbors to establish links (convergence)...")
-	convergenceStart := time.Now()
-	converged := false
-
-	for i := 0; i < 20; i++ {
-		time.Sleep(2 * time.Second)
-
-		// Check Pair 1: r2 neighbors should contain r1 (1.1.1.1)
-		code1, body1, err1 := sendStandaloneRequest(http.MethodGet, StandR2API+"/api/v1/neighbors", token, nil)
-		// Check Pair 2: r4 neighbors should contain r3 (3.3.3.3)
-		code2, body2, err2 := sendStandaloneRequest(http.MethodGet, StandR4API+"/api/v1/neighbors", token, nil)
-
-		if err1 != nil || err2 != nil || code1 != http.StatusOK || code2 != http.StatusOK {
-			continue
-		}
-
-		var res1, res2 map[string]interface{}
-		if json.Unmarshal([]byte(body1), &res1) != nil || json.Unmarshal([]byte(body2), &res2) != nil {
-			continue
-		}
-
-		neighs1, ok1 := res1["neighbors"].([]interface{})
-		neighs2, ok2 := res2["neighbors"].([]interface{})
-
-		if ok1 && ok2 && len(neighs1) >= 1 && len(neighs2) >= 1 {
-			converged = true
-			t.Logf("OLSR converged in %v", time.Since(convergenceStart))
-			break
-		}
-	}
-
-	if !converged {
-		t.Fatalf("routers failed to establish neighbors within timeout")
-	}
+	waitForNeighbors(t, StandR2API, StandR4API, token)
 
 	// 4. Test Scenario 1: HNA Route Propagation (Unicast)
 	t.Log("Testing Scenario 1: HNA Route Propagation & Removal...")
@@ -167,7 +101,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	hna1Payload := map[string]string{"prefix": "192.168.10.0/24"}
 	hna1Bytes, _ := json.Marshal(hna1Payload)
 
-	code, _, err := sendStandaloneRequest(http.MethodPost, StandR1API+"/api/v1/hna", token, hna1Bytes)
+	code, _, err := sendRequest(http.MethodPost, StandR1API+"/api/v1/hna", token, hna1Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to add HNA prefix to R1: %v (code=%d)", err, code)
 	}
@@ -197,7 +131,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	}
 
 	// Remove HNA prefix from R1
-	code, _, err = sendStandaloneRequest(http.MethodDelete, StandR1API+"/api/v1/hna", token, hna1Bytes)
+	code, _, err = sendRequest(http.MethodDelete, StandR1API+"/api/v1/hna", token, hna1Bytes)
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("failed to remove HNA prefix from R1: %v (code=%d)", err, code)
 	}
@@ -222,7 +156,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	hna2Payload := map[string]string{"prefix": "192.168.20.0/24"}
 	hna2Bytes, _ := json.Marshal(hna2Payload)
 
-	code, _, err = sendStandaloneRequest(http.MethodPost, StandR3API+"/api/v1/hna", token, hna2Bytes)
+	code, _, err = sendRequest(http.MethodPost, StandR3API+"/api/v1/hna", token, hna2Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to add HNA prefix to R3: %v (code=%d)", err, code)
 	}
@@ -244,7 +178,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	}
 
 	// Remove HNA prefix from R3
-	code, _, err = sendStandaloneRequest(http.MethodDelete, StandR3API+"/api/v1/hna", token, hna2Bytes)
+	code, _, err = sendRequest(http.MethodDelete, StandR3API+"/api/v1/hna", token, hna2Bytes)
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("failed to remove HNA prefix from R3: %v (code=%d)", err, code)
 	}
@@ -271,7 +205,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	// Test Pair 1 (r1 -> r2)
 	sc1Body := map[string]interface{}{"source": "10.10.1.10", "group": "239.2.2.2", "duration_seconds": 60}
 	sc1Bytes, _ := json.Marshal(sc1Body)
-	code, _, err = sendStandaloneRequest(http.MethodPost, StandR1API+"/api/v1/molsr/source-claims", token, sc1Bytes)
+	code, _, err = sendRequest(http.MethodPost, StandR1API+"/api/v1/molsr/source-claims", token, sc1Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to inject SourceClaim on R1: %v (code=%d)", err, code)
 	}
@@ -280,7 +214,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 		"source": "10.10.1.10", "group": "239.2.2.2", "parent": "10.10.1.10", "child": "10.10.1.20", "duration_seconds": 60,
 	}
 	cp1Bytes, _ := json.Marshal(cp1Body)
-	code, _, err = sendStandaloneRequest(http.MethodPost, StandR2API+"/api/v1/molsr/confirm-parents", token, cp1Bytes)
+	code, _, err = sendRequest(http.MethodPost, StandR2API+"/api/v1/molsr/confirm-parents", token, cp1Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to register ConfirmParent on R2: %v (code=%d)", err, code)
 	}
@@ -304,7 +238,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	// Delete ConfirmParent on R2
 	cp1DelBody := map[string]interface{}{"source": "10.10.1.10", "group": "239.2.2.2", "child": "10.10.1.20"}
 	cp1DelBytes, _ := json.Marshal(cp1DelBody)
-	code, _, err = sendStandaloneRequest(http.MethodDelete, StandR2API+"/api/v1/molsr/confirm-parents", token, cp1DelBytes)
+	code, _, err = sendRequest(http.MethodDelete, StandR2API+"/api/v1/molsr/confirm-parents", token, cp1DelBytes)
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("failed to delete ConfirmParent on R2: %v (code=%d)", err, code)
 	}

@@ -248,7 +248,11 @@ func SerializePacket(p *Packet) ([]byte, error) {
 					}
 				}
 				linkBytes := linkBuf.Bytes()
+				if len(linkBytes) > 65535 {
+					return nil, fmt.Errorf("link message size exceeds maximum uint16 size")
+				}
 				// Fill Link Message Size (which is the length of Link Message header + addresses)
+				//nolint:gosec // G115: length is pre-validated to be <= 65535
 				binary.BigEndian.PutUint16(linkBytes[2:4], uint16(len(linkBytes)))
 				if _, err := msgBuf.Write(linkBytes); err != nil {
 					return nil, err
@@ -335,7 +339,11 @@ func SerializePacket(p *Packet) ([]byte, error) {
 		}
 
 		msgBytes := msgBuf.Bytes()
+		if len(msgBytes) > 65535 {
+			return nil, fmt.Errorf("message size exceeds maximum uint16 size")
+		}
 		// Fill Message Size (length of message header + body)
+		//nolint:gosec // G115: length is pre-validated to be <= 65535
 		binary.BigEndian.PutUint16(msgBytes[2:4], uint16(len(msgBytes)))
 		if _, err := buf.Write(msgBytes); err != nil {
 			return nil, err
@@ -343,7 +351,11 @@ func SerializePacket(p *Packet) ([]byte, error) {
 	}
 
 	packetBytes := buf.Bytes()
+	if len(packetBytes) > 65535 {
+		return nil, fmt.Errorf("packet size exceeds maximum uint16 size")
+	}
 	// Fill Packet Length
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	binary.BigEndian.PutUint16(packetBytes[0:2], uint16(len(packetBytes)))
 	return packetBytes, nil
 }

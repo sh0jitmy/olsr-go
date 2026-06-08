@@ -17,6 +17,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -101,15 +102,16 @@ func (s *APIServer) Start(ctx context.Context) error {
 
 	addr := fmt.Sprintf(":%d", cfg.APIPort)
 	s.server = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 3 * time.Second,
 	}
 
 	slog.Info("Starting API server", "addr", addr)
 	// For production, if cert files are configured we would use ListenAndServeTLS.
 	// For simplicity, we fallback to ListenAndServe if no certificates exist.
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("API server listen failure", "error", err)
 		}
 	}()
@@ -139,6 +141,12 @@ func (s *APIServer) auditLog(next http.HandlerFunc) http.HandlerFunc {
 			clientIP = r.RemoteAddr
 		}
 
+		// Sanitize untrusted log fields to prevent log injection
+		sanitizedIP := sanitizeLogField(clientIP)
+		sanitizedUser := sanitizeLogField(user)
+		sanitizedMethod := sanitizeLogField(r.Method)
+		sanitizedPath := sanitizeLogField(r.URL.Path)
+
 		next(w, r)
 
 		duration := time.Since(start)
@@ -146,10 +154,10 @@ func (s *APIServer) auditLog(next http.HandlerFunc) http.HandlerFunc {
 		slog.Info("Audit Log",
 			"timestamp", time.Now().Format(time.RFC3339),
 			"level", "AUDIT",
-			"client_ip", clientIP,
-			"user", user,
-			"method", r.Method,
-			"path", r.URL.Path,
+			"client_ip", sanitizedIP,
+			"user", sanitizedUser,
+			"method", sanitizedMethod,
+			"path", sanitizedPath,
 			"duration_ms", duration.Milliseconds(),
 		)
 	}
@@ -241,4 +249,10 @@ func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func sanitizeLogField(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
 }

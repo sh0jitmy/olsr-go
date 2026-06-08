@@ -25,7 +25,7 @@ func writeTempFile(t *testing.T, content string) string {
 	t.Helper()
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "olsrd.yaml")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		t.Fatalf("failed to write temp file: %v", err)
 	}
 	return tmpFile
@@ -178,7 +178,7 @@ interfaces:
 hello_interval: 4s
 tc_interval: 10s
 `
-	if err := os.WriteFile(tmpFile, []byte(validYaml), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(validYaml), 0600); err != nil {
 		t.Fatalf("failed to write updated config: %v", err)
 	}
 
@@ -199,7 +199,7 @@ interfaces:
 hello_interval: 4s
 tc_interval: 10s
 `
-	if err := os.WriteFile(tmpFile, []byte(invalidYaml), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(invalidYaml), 0600); err != nil {
 		t.Fatalf("failed to write invalid config: %v", err)
 	}
 

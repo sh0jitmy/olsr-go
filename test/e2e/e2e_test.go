@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	//nolint:gosec // G101: e2e test JWT secret key is hardcoded by design for test containers
 	JWTSecret       = "e2e-secret-key-for-olsrd"
 	R1API           = "http://localhost:8081"
 	R2API           = "http://localhost:8082"
@@ -67,7 +68,7 @@ func sendRequest(method, url, token string, body []byte) (int, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -62,7 +62,7 @@ api_port: 0 # random
 `, jwtSecret)
 
 	tmpFile := filepath.Join(t.TempDir(), "olsrd.yaml")
-	if err := os.WriteFile(tmpFile, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(configContent), 0600); err != nil {
 		t.Fatalf("failed to write mock config: %v", err)
 	}
 
