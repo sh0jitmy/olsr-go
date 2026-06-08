@@ -18,6 +18,7 @@ package netlink
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"sync"
 
@@ -49,10 +50,10 @@ func (m *LinuxMonitor) Start(ctx context.Context) {
 	addrChan := make(chan vnetlink.AddrUpdate)
 
 	if err := vnetlink.LinkSubscribe(linkChan, m.ctx.Done()); err != nil {
-		// Log or fallback
+		slog.Error("Failed to subscribe to netlink link updates", "error", err)
 	}
 	if err := vnetlink.AddrSubscribe(addrChan, m.ctx.Done()); err != nil {
-		// Log or fallback
+		slog.Error("Failed to subscribe to netlink address updates", "error", err)
 	}
 
 	go func() {

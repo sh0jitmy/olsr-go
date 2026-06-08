@@ -26,7 +26,7 @@ test:
 	$(GO) test -race ./internal/...
 
 lint:
-	golangci-lint run
+	GOOS=linux golangci-lint run
 
 fmt:
 	$(GO) fmt ./...

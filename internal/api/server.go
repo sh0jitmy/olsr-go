@@ -151,7 +151,6 @@ func (s *APIServer) auditLog(next http.HandlerFunc) http.HandlerFunc {
 
 		duration := time.Since(start)
 		// Audit structured log output
-		//nolint:gosec // G706: structured logger handles escaping, and fields are sanitized
 		slog.Info("Audit Log",
 			"timestamp", time.Now().Format(time.RFC3339),
 			"level", "AUDIT",
