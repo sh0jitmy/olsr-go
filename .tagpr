@@ -2,3 +2,5 @@
 releaseBranch = main
 versionFile = internal/version/version.go
 vPrefix = true
+majorLabels = olsr-major
+minorLabels = olsr-minor
