@@ -136,9 +136,9 @@ func (r *LinuxMulticastRouter) registerVif(ifindex int) (uint16, error) {
 	}
 
 	vc := vifctl{
-		vifc_vifi:        vif,
-		vifc_flags:       VIFF_USE_IFINDEX,
-		vifc_threshold:   1,
+		vifc_vifi:      vif,
+		vifc_flags:     VIFF_USE_IFINDEX,
+		vifc_threshold: 1,
 		//nolint:gosec // G115: ifindex is pre-validated to be positive
 		vifc_lcl_ifindex: int32(ifindex),
 	}

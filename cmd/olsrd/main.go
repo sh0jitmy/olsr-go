@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//nolint // because we cannot modify golangci.yml
 package main
 
 import (
@@ -56,20 +55,21 @@ func main() {
 		os.Exit(0)
 	}
 
+	cfgMgr := config.NewManager(*configPath)
+	if err := cfgMgr.Load(); err != nil {
+		slog.Error("Failed to load initial configuration", "error", err)
+		os.Exit(1)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	d := &Daemon{
-		cfgMgr:     config.NewManager(*configPath),
+		cfgMgr:     cfgMgr,
 		eventBus:   eventbus.NewEventBus(100, 50*time.Millisecond),
 		ctx:        ctx,
 		cancel:     cancel,
 		Standalone: *standalone,
-	}
-
-	if err := d.cfgMgr.Load(); err != nil {
-		slog.Error("Failed to load initial configuration", "error", err)
-		os.Exit(1)
 	}
 
 	d.initializeComponents()

@@ -86,13 +86,11 @@ func TestSPFRouteCalculation(t *testing.T) {
 		t.Fatalf("failed SPF: %v", err)
 	}
 
-	routes := spf.GetRoutes()
-	// Should have routes to:
-	// - 2.2.2.2/32 (metric 1, next hop 2.2.2.2, iface 10)
-	// - 4.4.4.4/32 (metric 2, next hop 2.2.2.2, iface 10)
-	// - 5.5.5.5/32 (metric 3, next hop 2.2.2.2, iface 10)
-	// - 192.168.100.0/24 (metric 4, next hop 2.2.2.2, iface 10)
+	verifySPFRouteCalculationResults(t, spf)
+}
 
+func verifySPFRouteCalculationResults(t *testing.T, spf *SPFEngine) {
+	routes := spf.GetRoutes()
 	routeMap := make(map[string]Route)
 	for _, r := range routes {
 		routeMap[r.Prefix] = r

@@ -70,19 +70,9 @@ func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 	defer client.Stop()
 
 	// Wait for connection and HELLO
-	var helloPacket []byte
 	select {
-	case helloPacket = <-packetChan:
-		// Check HELLO header
-		if len(helloPacket) < 10 {
-			t.Fatalf("HELLO packet too short")
-		}
-		marker := helloPacket[2]
-		version := helloPacket[3]
-		cmd := binary.BigEndian.Uint16(helloPacket[8:10])
-		if marker != ZapiMarker || version != ZapiVersion6 || cmd != 18 {
-			t.Errorf("invalid HELLO message headers: marker=%v, version=%v, cmd=%d", marker, version, cmd)
-		}
+	case helloPacket := <-packetChan:
+		validateZAPIHelloPacket(t, helloPacket)
 	case <-time.After(2 * time.Second):
 		t.Fatalf("timeout waiting for ZAPI client connection")
 	}
@@ -95,14 +85,7 @@ func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 
 	select {
 	case routePacket := <-packetChan:
-		cmd := binary.BigEndian.Uint16(routePacket[8:10])
-		if cmd != ZebraRouteAdd {
-			t.Errorf("expected cmd ZEBRA_ROUTE_ADD (%d), got %d", ZebraRouteAdd, cmd)
-		}
-		// check route type OLSR (11) at index 10
-		if routePacket[10] != RouteOlsr {
-			t.Errorf("expected route type %d, got %d", RouteOlsr, routePacket[10])
-		}
+		validateZAPIUnicastPacket(t, routePacket)
 	case <-time.After(1 * time.Second):
 		t.Fatalf("timeout waiting for unicast packet")
 	}
@@ -115,36 +98,57 @@ func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 
 	select {
 	case mcastPacket := <-packetChan:
-		cmd := binary.BigEndian.Uint16(mcastPacket[8:10])
-		if cmd != ZebraIpmrRouteAdd {
-			t.Errorf("expected cmd ZebraIpmrRouteAdd (%d), got %d", ZebraIpmrRouteAdd, cmd)
-		}
-		// Check multicast details: Family (2) at index 10
-		if mcastPacket[10] != 2 {
-			t.Errorf("expected address family 2 (IPv4), got %d", mcastPacket[10])
-		}
-		// Source IP (10.10.10.1) starts at index 11
-		srcIP := net.IP(mcastPacket[11:15])
-		if !srcIP.Equal(net.ParseIP("10.10.10.1")) {
-			t.Errorf("expected source 10.10.10.1, got %v", srcIP)
-		}
-		// Group IP (224.0.0.9) starts at index 15
-		grpIP := net.IP(mcastPacket[15:19])
-		if !grpIP.Equal(net.ParseIP("224.0.0.9")) {
-			t.Errorf("expected group 224.0.0.9, got %v", grpIP)
-		}
-		// IIF (2) starts at index 19
-		iif := binary.BigEndian.Uint32(mcastPacket[19:23])
-		if iif != 2 {
-			t.Errorf("expected IIF 2, got %d", iif)
-		}
-		// OIF Count (2) starts at index 23
-		oifCount := binary.BigEndian.Uint32(mcastPacket[23:27])
-		if oifCount != 2 {
-			t.Errorf("expected 2 OIFs, got %d", oifCount)
-		}
+		validateZAPIMulticastPacket(t, mcastPacket)
 	case <-time.After(1 * time.Second):
 		t.Fatalf("timeout waiting for multicast packet")
+	}
+}
+
+func validateZAPIHelloPacket(t *testing.T, helloPacket []byte) {
+	if len(helloPacket) < 10 {
+		t.Fatalf("HELLO packet too short")
+	}
+	marker := helloPacket[2]
+	version := helloPacket[3]
+	cmd := binary.BigEndian.Uint16(helloPacket[8:10])
+	if marker != ZapiMarker || version != ZapiVersion6 || cmd != 18 {
+		t.Errorf("invalid HELLO message headers: marker=%v, version=%v, cmd=%d", marker, version, cmd)
+	}
+}
+
+func validateZAPIUnicastPacket(t *testing.T, routePacket []byte) {
+	cmd := binary.BigEndian.Uint16(routePacket[8:10])
+	if cmd != ZebraRouteAdd {
+		t.Errorf("expected cmd ZEBRA_ROUTE_ADD (%d), got %d", ZebraRouteAdd, cmd)
+	}
+	if routePacket[10] != RouteOlsr {
+		t.Errorf("expected route type %d, got %d", RouteOlsr, routePacket[10])
+	}
+}
+
+func validateZAPIMulticastPacket(t *testing.T, mcastPacket []byte) {
+	cmd := binary.BigEndian.Uint16(mcastPacket[8:10])
+	if cmd != ZebraIpmrRouteAdd {
+		t.Errorf("expected cmd ZebraIpmrRouteAdd (%d), got %d", ZebraIpmrRouteAdd, cmd)
+	}
+	if mcastPacket[10] != 2 {
+		t.Errorf("expected address family 2 (IPv4), got %d", mcastPacket[10])
+	}
+	srcIP := net.IP(mcastPacket[11:15])
+	if !srcIP.Equal(net.ParseIP("10.10.10.1")) {
+		t.Errorf("expected source 10.10.10.1, got %v", srcIP)
+	}
+	grpIP := net.IP(mcastPacket[15:19])
+	if !grpIP.Equal(net.ParseIP("224.0.0.9")) {
+		t.Errorf("expected group 224.0.0.9, got %v", grpIP)
+	}
+	iif := binary.BigEndian.Uint32(mcastPacket[19:23])
+	if iif != 2 {
+		t.Errorf("expected IIF 2, got %d", iif)
+	}
+	oifCount := binary.BigEndian.Uint32(mcastPacket[23:27])
+	if oifCount != 2 {
+		t.Errorf("expected 2 OIFs, got %d", oifCount)
 	}
 }
 

@@ -24,11 +24,11 @@ import (
 
 // Message Type constants
 const (
-	MsgTypeHello        uint8 = 1
-	MsgTypeTC           uint8 = 2
-	MsgTypeMID          uint8 = 3
-	MsgTypeHNA          uint8 = 4
-	MsgTypeSourceClaim  uint8 = 108 // MOLSR
+	MsgTypeHello         uint8 = 1
+	MsgTypeTC            uint8 = 2
+	MsgTypeMID           uint8 = 3
+	MsgTypeHNA           uint8 = 4
+	MsgTypeSourceClaim   uint8 = 108 // MOLSR
 	MsgTypeConfirmParent uint8 = 109 // MOLSR
 )
 
@@ -94,7 +94,7 @@ func EncodeTimeVal(d time.Duration) uint8 {
 // Packets and Message structures
 
 type PacketHeader struct {
-	PacketLength int    // Includes header
+	PacketLength int // Includes header
 	PacketSeqNum uint16
 }
 
@@ -174,7 +174,7 @@ func SerializePacket(p *Packet) ([]byte, error) {
 
 	for _, msg := range p.Messages {
 		msgBuf := new(bytes.Buffer)
-		
+
 		// Message Type
 		if err := msgBuf.WriteByte(msg.Header.Type); err != nil {
 			return nil, err
@@ -209,133 +209,25 @@ func SerializePacket(p *Packet) ([]byte, error) {
 		}
 
 		// Message Body
+		var err error
 		switch body := msg.Body.(type) {
 		case HelloMessage:
-			// Reserved (16 bits)
-			if err := binary.Write(msgBuf, binary.BigEndian, uint16(0)); err != nil {
-				return nil, err
-			}
-			// Htime
-			if err := msgBuf.WriteByte(EncodeTimeVal(body.Htime)); err != nil {
-				return nil, err
-			}
-			// Willingness
-			if err := msgBuf.WriteByte(body.Willingness); err != nil {
-				return nil, err
-			}
-			for _, lm := range body.LinkMessages {
-				linkBuf := new(bytes.Buffer)
-				// Link Code
-				if err := linkBuf.WriteByte(lm.LinkCode); err != nil {
-					return nil, err
-				}
-				// Reserved
-				if err := linkBuf.WriteByte(0); err != nil {
-					return nil, err
-				}
-				// Link Message Size (2 bytes) placeholder
-				if err := binary.Write(linkBuf, binary.BigEndian, uint16(0)); err != nil {
-					return nil, err
-				}
-				// Neighbor Addresses
-				for _, addr := range lm.NeighborAddresses {
-					addrIPv4 := addr.To4()
-					if addrIPv4 == nil {
-						return nil, fmt.Errorf("invalid IPv4 address for neighbor: %v", addr)
-					}
-					if _, err := linkBuf.Write(addrIPv4); err != nil {
-						return nil, err
-					}
-				}
-				linkBytes := linkBuf.Bytes()
-				if len(linkBytes) > 65535 {
-					return nil, fmt.Errorf("link message size exceeds maximum uint16 size")
-				}
-				// Fill Link Message Size (which is the length of Link Message header + addresses)
-				//nolint:gosec // G115: length is pre-validated to be <= 65535
-				binary.BigEndian.PutUint16(linkBytes[2:4], uint16(len(linkBytes)))
-				if _, err := msgBuf.Write(linkBytes); err != nil {
-					return nil, err
-				}
-			}
-
+			err = serializeHelloMessage(msgBuf, body)
 		case TCMessage:
-			// ANSN (2 bytes)
-			if err := binary.Write(msgBuf, binary.BigEndian, body.ANSN); err != nil {
-				return nil, err
-			}
-			// Reserved (2 bytes)
-			if err := binary.Write(msgBuf, binary.BigEndian, uint16(0)); err != nil {
-				return nil, err
-			}
-			for _, addr := range body.NeighborAddresses {
-				addrIPv4 := addr.To4()
-				if addrIPv4 == nil {
-					return nil, fmt.Errorf("invalid IPv4 address: %v", addr)
-				}
-				if _, err := msgBuf.Write(addrIPv4); err != nil {
-					return nil, err
-				}
-			}
-
+			err = serializeTCMessage(msgBuf, body)
 		case MIDMessage:
-			for _, addr := range body.Addresses {
-				addrIPv4 := addr.To4()
-				if addrIPv4 == nil {
-					return nil, fmt.Errorf("invalid IPv4 address: %v", addr)
-				}
-				if _, err := msgBuf.Write(addrIPv4); err != nil {
-					return nil, err
-				}
-			}
-
+			err = serializeMIDMessage(msgBuf, body)
 		case HNAMessage:
-			for _, assoc := range body.Associations {
-				addrIPv4 := assoc.Address.To4()
-				maskIPv4 := net.IP(assoc.Netmask.Mask).To4()
-				if addrIPv4 == nil || maskIPv4 == nil {
-					return nil, fmt.Errorf("invalid IPv4 address/mask: %v/%v", assoc.Address, assoc.Netmask.Mask)
-				}
-				if _, err := msgBuf.Write(addrIPv4); err != nil {
-					return nil, err
-				}
-				if _, err := msgBuf.Write(maskIPv4); err != nil {
-					return nil, err
-				}
-			}
-
+			err = serializeHNAMessage(msgBuf, body)
 		case SourceClaimMessage:
-			srcIPv4 := body.SourceIP.To4()
-			grpIPv4 := body.GroupID.To4()
-			if srcIPv4 == nil || grpIPv4 == nil {
-				return nil, fmt.Errorf("invalid IPv4 multicast source/group: %v/%v", body.SourceIP, body.GroupID)
-			}
-			if _, err := msgBuf.Write(srcIPv4); err != nil {
-				return nil, err
-			}
-			if _, err := msgBuf.Write(grpIPv4); err != nil {
-				return nil, err
-			}
-
+			err = serializeSourceClaimMessage(msgBuf, body)
 		case ConfirmParentMessage:
-			srcIPv4 := body.SourceIP.To4()
-			grpIPv4 := body.GroupID.To4()
-			parentIPv4 := body.ParentIP.To4()
-			if srcIPv4 == nil || grpIPv4 == nil || parentIPv4 == nil {
-				return nil, fmt.Errorf("invalid IPv4 Source/Group/Parent: %v/%v/%v", body.SourceIP, body.GroupID, body.ParentIP)
-			}
-			if _, err := msgBuf.Write(srcIPv4); err != nil {
-				return nil, err
-			}
-			if _, err := msgBuf.Write(grpIPv4); err != nil {
-				return nil, err
-			}
-			if _, err := msgBuf.Write(parentIPv4); err != nil {
-				return nil, err
-			}
-
+			err = serializeConfirmParentMessage(msgBuf, body)
 		default:
 			return nil, fmt.Errorf("unsupported message body type: %T", msg.Body)
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		msgBytes := msgBuf.Bytes()
@@ -358,6 +250,142 @@ func SerializePacket(p *Packet) ([]byte, error) {
 	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	binary.BigEndian.PutUint16(packetBytes[0:2], uint16(len(packetBytes)))
 	return packetBytes, nil
+}
+
+func serializeHelloMessage(msgBuf *bytes.Buffer, body HelloMessage) error {
+	// Reserved (16 bits)
+	if err := binary.Write(msgBuf, binary.BigEndian, uint16(0)); err != nil {
+		return err
+	}
+	// Htime
+	if err := msgBuf.WriteByte(EncodeTimeVal(body.Htime)); err != nil {
+		return err
+	}
+	// Willingness
+	if err := msgBuf.WriteByte(body.Willingness); err != nil {
+		return err
+	}
+	for _, lm := range body.LinkMessages {
+		linkBuf := new(bytes.Buffer)
+		// Link Code
+		if err := linkBuf.WriteByte(lm.LinkCode); err != nil {
+			return err
+		}
+		// Reserved
+		if err := linkBuf.WriteByte(0); err != nil {
+			return err
+		}
+		// Link Message Size (2 bytes) placeholder
+		if err := binary.Write(linkBuf, binary.BigEndian, uint16(0)); err != nil {
+			return err
+		}
+		// Neighbor Addresses
+		for _, addr := range lm.NeighborAddresses {
+			addrIPv4 := addr.To4()
+			if addrIPv4 == nil {
+				return fmt.Errorf("invalid IPv4 address for neighbor: %v", addr)
+			}
+			if _, err := linkBuf.Write(addrIPv4); err != nil {
+				return err
+			}
+		}
+		linkBytes := linkBuf.Bytes()
+		if len(linkBytes) > 65535 {
+			return fmt.Errorf("link message size exceeds maximum uint16 size")
+		}
+		// Fill Link Message Size (which is the length of Link Message header + addresses)
+		//nolint:gosec // G115: length is pre-validated to be <= 65535
+		binary.BigEndian.PutUint16(linkBytes[2:4], uint16(len(linkBytes)))
+		if _, err := msgBuf.Write(linkBytes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func serializeTCMessage(msgBuf *bytes.Buffer, body TCMessage) error {
+	// ANSN (2 bytes)
+	if err := binary.Write(msgBuf, binary.BigEndian, body.ANSN); err != nil {
+		return err
+	}
+	// Reserved (2 bytes)
+	if err := binary.Write(msgBuf, binary.BigEndian, uint16(0)); err != nil {
+		return err
+	}
+	for _, addr := range body.NeighborAddresses {
+		addrIPv4 := addr.To4()
+		if addrIPv4 == nil {
+			return fmt.Errorf("invalid IPv4 address: %v", addr)
+		}
+		if _, err := msgBuf.Write(addrIPv4); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func serializeMIDMessage(msgBuf *bytes.Buffer, body MIDMessage) error {
+	for _, addr := range body.Addresses {
+		addrIPv4 := addr.To4()
+		if addrIPv4 == nil {
+			return fmt.Errorf("invalid IPv4 address: %v", addr)
+		}
+		if _, err := msgBuf.Write(addrIPv4); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func serializeHNAMessage(msgBuf *bytes.Buffer, body HNAMessage) error {
+	for _, assoc := range body.Associations {
+		addrIPv4 := assoc.Address.To4()
+		maskIPv4 := net.IP(assoc.Netmask.Mask).To4()
+		if addrIPv4 == nil || maskIPv4 == nil {
+			return fmt.Errorf("invalid IPv4 address/mask: %v/%v", assoc.Address, assoc.Netmask.Mask)
+		}
+		if _, err := msgBuf.Write(addrIPv4); err != nil {
+			return err
+		}
+		if _, err := msgBuf.Write(maskIPv4); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func serializeSourceClaimMessage(msgBuf *bytes.Buffer, body SourceClaimMessage) error {
+	srcIPv4 := body.SourceIP.To4()
+	grpIPv4 := body.GroupID.To4()
+	if srcIPv4 == nil || grpIPv4 == nil {
+		return fmt.Errorf("invalid IPv4 multicast source/group: %v/%v", body.SourceIP, body.GroupID)
+	}
+	if _, err := msgBuf.Write(srcIPv4); err != nil {
+		return err
+	}
+	if _, err := msgBuf.Write(grpIPv4); err != nil {
+		return err
+	}
+	return nil
+}
+
+func serializeConfirmParentMessage(msgBuf *bytes.Buffer, body ConfirmParentMessage) error {
+	srcIPv4 := body.SourceIP.To4()
+	grpIPv4 := body.GroupID.To4()
+	parentIPv4 := body.ParentIP.To4()
+	if srcIPv4 == nil || grpIPv4 == nil || parentIPv4 == nil {
+		return fmt.Errorf("invalid IPv4 Source/Group/Parent: %v/%v/%v", body.SourceIP, body.GroupID, body.ParentIP)
+	}
+	if _, err := msgBuf.Write(srcIPv4); err != nil {
+		return err
+	}
+	if _, err := msgBuf.Write(grpIPv4); err != nil {
+		return err
+	}
+	if _, err := msgBuf.Write(parentIPv4); err != nil {
+		return err
+	}
+	return nil
 }
 
 // DeserializePacket converts binary payload back to Packet struct
@@ -399,123 +427,27 @@ func DeserializePacket(data []byte) (*Packet, error) {
 
 		msgBodyData := data[offset+12 : offset+int(msgSize)]
 		var body interface{}
+		var err error
 
 		switch msgType {
 		case MsgTypeHello:
-			if len(msgBodyData) < 4 {
-				return nil, fmt.Errorf("invalid HELLO message body length")
-			}
-			htimeVal := msgBodyData[2]
-			will := msgBodyData[3]
-
-			linkMsgs := make([]HelloLinkMessage, 0)
-			linkOffset := 4
-			for linkOffset < len(msgBodyData) {
-				if len(msgBodyData)-linkOffset < 4 {
-					return nil, fmt.Errorf("invalid HelloLinkMessage header")
-				}
-				linkCode := msgBodyData[linkOffset]
-				linkMsgSize := binary.BigEndian.Uint16(msgBodyData[linkOffset+2 : linkOffset+4])
-
-				if linkOffset+int(linkMsgSize) > len(msgBodyData) {
-					return nil, fmt.Errorf("HelloLinkMessage size %d exceeds HELLO body", linkMsgSize)
-				}
-
-				addrData := msgBodyData[linkOffset+4 : linkOffset+int(linkMsgSize)]
-				if len(addrData)%4 != 0 {
-					return nil, fmt.Errorf("invalid addresses length in Link Message: %d", len(addrData))
-				}
-
-				addrs := make([]net.IP, len(addrData)/4)
-				for i := 0; i < len(addrs); i++ {
-					addrs[i] = cloneIP(addrData[i*4 : (i+1)*4])
-				}
-
-				linkMsgs = append(linkMsgs, HelloLinkMessage{
-					LinkCode:          linkCode,
-					NeighborAddresses: addrs,
-				})
-				linkOffset += int(linkMsgSize)
-			}
-
-			body = HelloMessage{
-				Htime:        DecodeTimeVal(htimeVal),
-				Willingness:  will,
-				LinkMessages: linkMsgs,
-			}
-
+			body, err = deserializeHelloMessage(msgBodyData)
 		case MsgTypeTC:
-			if len(msgBodyData) < 4 {
-				return nil, fmt.Errorf("invalid TC message body length")
-			}
-			ansn := binary.BigEndian.Uint16(msgBodyData[0:2])
-			addrData := msgBodyData[4:]
-			if len(addrData)%4 != 0 {
-				return nil, fmt.Errorf("invalid addresses length in TC Message: %d", len(addrData))
-			}
-			addrs := make([]net.IP, len(addrData)/4)
-			for i := 0; i < len(addrs); i++ {
-				addrs[i] = cloneIP(addrData[i*4 : (i+1)*4])
-			}
-			body = TCMessage{
-				ANSN:              ansn,
-				NeighborAddresses: addrs,
-			}
-
+			body, err = deserializeTCMessage(msgBodyData)
 		case MsgTypeMID:
-			if len(msgBodyData)%4 != 0 {
-				return nil, fmt.Errorf("invalid addresses length in MID Message: %d", len(msgBodyData))
-			}
-			addrs := make([]net.IP, len(msgBodyData)/4)
-			for i := 0; i < len(addrs); i++ {
-				addrs[i] = cloneIP(msgBodyData[i*4 : (i+1)*4])
-			}
-			body = MIDMessage{
-				Addresses: addrs,
-			}
-
+			body, err = deserializeMIDMessage(msgBodyData)
 		case MsgTypeHNA:
-			if len(msgBodyData)%8 != 0 {
-				return nil, fmt.Errorf("invalid associations length in HNA Message: %d", len(msgBodyData))
-			}
-			assocs := make([]HNAAssociation, len(msgBodyData)/8)
-			for i := 0; i < len(assocs); i++ {
-				addr := cloneIP(msgBodyData[i*8 : i*8+4])
-				mask := cloneMask(msgBodyData[i*8+4 : i*8+8])
-				assocs[i] = HNAAssociation{
-					Address: addr,
-					Netmask: net.IPNet{
-						IP:   addr,
-						Mask: mask,
-					},
-				}
-			}
-			body = HNAMessage{
-				Associations: assocs,
-			}
-
+			body, err = deserializeHNAMessage(msgBodyData)
 		case MsgTypeSourceClaim:
-			if len(msgBodyData) < 8 {
-				return nil, fmt.Errorf("invalid SOURCE CLAIM message body length")
-			}
-			body = SourceClaimMessage{
-				SourceIP: cloneIP(msgBodyData[0:4]),
-				GroupID:  cloneIP(msgBodyData[4:8]),
-			}
-
+			body, err = deserializeSourceClaimMessage(msgBodyData)
 		case MsgTypeConfirmParent:
-			if len(msgBodyData) < 12 {
-				return nil, fmt.Errorf("invalid CONFIRM PARENT message body length")
-			}
-			body = ConfirmParentMessage{
-				SourceIP: cloneIP(msgBodyData[0:4]),
-				GroupID:  cloneIP(msgBodyData[4:8]),
-				ParentIP: cloneIP(msgBodyData[8:12]),
-			}
-
+			body, err = deserializeConfirmParentMessage(msgBodyData)
 		default:
 			// To keep parsing other messages in case of unknown types, we can just skip or save as raw bytes
 			body = msgBodyData
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		messages = append(messages, Message{
@@ -539,6 +471,124 @@ func DeserializePacket(data []byte) (*Packet, error) {
 			PacketSeqNum: pktSeq,
 		},
 		Messages: messages,
+	}, nil
+}
+
+func deserializeHelloMessage(msgBodyData []byte) (HelloMessage, error) {
+	if len(msgBodyData) < 4 {
+		return HelloMessage{}, fmt.Errorf("invalid HELLO message body length")
+	}
+	htimeVal := msgBodyData[2]
+	will := msgBodyData[3]
+
+	linkMsgs := make([]HelloLinkMessage, 0)
+	linkOffset := 4
+	for linkOffset < len(msgBodyData) {
+		if len(msgBodyData)-linkOffset < 4 {
+			return HelloMessage{}, fmt.Errorf("invalid HelloLinkMessage header")
+		}
+		linkCode := msgBodyData[linkOffset]
+		linkMsgSize := binary.BigEndian.Uint16(msgBodyData[linkOffset+2 : linkOffset+4])
+
+		if linkOffset+int(linkMsgSize) > len(msgBodyData) {
+			return HelloMessage{}, fmt.Errorf("HelloLinkMessage size %d exceeds HELLO body", linkMsgSize)
+		}
+
+		addrData := msgBodyData[linkOffset+4 : linkOffset+int(linkMsgSize)]
+		if len(addrData)%4 != 0 {
+			return HelloMessage{}, fmt.Errorf("invalid addresses length in Link Message: %d", len(addrData))
+		}
+
+		addrs := make([]net.IP, len(addrData)/4)
+		for i := 0; i < len(addrs); i++ {
+			addrs[i] = cloneIP(addrData[i*4 : (i+1)*4])
+		}
+
+		linkMsgs = append(linkMsgs, HelloLinkMessage{
+			LinkCode:          linkCode,
+			NeighborAddresses: addrs,
+		})
+		linkOffset += int(linkMsgSize)
+	}
+
+	return HelloMessage{
+		Htime:        DecodeTimeVal(htimeVal),
+		Willingness:  will,
+		LinkMessages: linkMsgs,
+	}, nil
+}
+
+func deserializeTCMessage(msgBodyData []byte) (TCMessage, error) {
+	if len(msgBodyData) < 4 {
+		return TCMessage{}, fmt.Errorf("invalid TC message body length")
+	}
+	ansn := binary.BigEndian.Uint16(msgBodyData[0:2])
+	addrData := msgBodyData[4:]
+	if len(addrData)%4 != 0 {
+		return TCMessage{}, fmt.Errorf("invalid addresses length in TC Message: %d", len(addrData))
+	}
+	addrs := make([]net.IP, len(addrData)/4)
+	for i := 0; i < len(addrs); i++ {
+		addrs[i] = cloneIP(addrData[i*4 : (i+1)*4])
+	}
+	return TCMessage{
+		ANSN:              ansn,
+		NeighborAddresses: addrs,
+	}, nil
+}
+
+func deserializeMIDMessage(msgBodyData []byte) (MIDMessage, error) {
+	if len(msgBodyData)%4 != 0 {
+		return MIDMessage{}, fmt.Errorf("invalid addresses length in MID Message: %d", len(msgBodyData))
+	}
+	addrs := make([]net.IP, len(msgBodyData)/4)
+	for i := 0; i < len(addrs); i++ {
+		addrs[i] = cloneIP(msgBodyData[i*4 : (i+1)*4])
+	}
+	return MIDMessage{
+		Addresses: addrs,
+	}, nil
+}
+
+func deserializeHNAMessage(msgBodyData []byte) (HNAMessage, error) {
+	if len(msgBodyData)%8 != 0 {
+		return HNAMessage{}, fmt.Errorf("invalid associations length in HNA Message: %d", len(msgBodyData))
+	}
+	assocs := make([]HNAAssociation, len(msgBodyData)/8)
+	for i := 0; i < len(assocs); i++ {
+		addr := cloneIP(msgBodyData[i*8 : i*8+4])
+		mask := cloneMask(msgBodyData[i*8+4 : i*8+8])
+		assocs[i] = HNAAssociation{
+			Address: addr,
+			Netmask: net.IPNet{
+				IP:   addr,
+				Mask: mask,
+			},
+		}
+	}
+	return HNAMessage{
+		Associations: assocs,
+	}, nil
+}
+
+func deserializeSourceClaimMessage(msgBodyData []byte) (SourceClaimMessage, error) {
+	if len(msgBodyData) < 8 {
+		return SourceClaimMessage{}, fmt.Errorf("invalid SOURCE CLAIM message body length")
+	}
+	return SourceClaimMessage{
+		SourceIP: cloneIP(msgBodyData[0:4]),
+		GroupID:  cloneIP(msgBodyData[4:8]),
+	}, nil
+}
+
+func deserializeConfirmParentMessage(msgBodyData []byte) (ConfirmParentMessage, error) {
+	if len(msgBodyData) < 12 {
+		return ConfirmParentMessage{}, fmt.Errorf("invalid CONFIRM PARENT message body length")
+	}
+	return ConfirmParentMessage{
+		SourceIP: cloneIP(msgBodyData[0:4]),
+		GroupID:  cloneIP(msgBodyData[4:8]),
+		ParentIP: cloneIP(msgBodyData[8:12]),
 	}, nil
 }
 

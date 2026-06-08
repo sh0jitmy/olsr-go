@@ -112,20 +112,7 @@ func (nm *NeighborManager) ProcessHello(ctx context.Context, senderIP net.IP, or
 		nm.links[senderStr] = link
 	}
 
-	// Check if this node is listed in the HELLO message
-	isLocalSymmetric := false
-	for _, lm := range hello.LinkMessages {
-		linkType := lm.LinkCode & 0x03
-		neighType := (lm.LinkCode >> 2) & 0x03
-
-		for _, addr := range lm.NeighborAddresses {
-			if addr.String() == nm.routerID {
-				if linkType == LinkTypeSym || linkType == LinkTypeAsym || neighType == NeighTypeSym || neighType == NeighTypeMPR {
-					isLocalSymmetric = true
-				}
-			}
-		}
-	}
+	isLocalSymmetric := nm.checkLocalSymmetricLink(hello)
 
 	oldState := link.State
 	if isLocalSymmetric {
@@ -150,44 +137,13 @@ func (nm *NeighborManager) ProcessHello(ctx context.Context, senderIP net.IP, or
 	neigh.Symmetric = (link.State == LinkStateSymmetric)
 
 	// Handle MPR Selector Set: If the sender selected us as MPR
-	isMPRSelector := false
-	for _, lm := range hello.LinkMessages {
-		neighType := (lm.LinkCode >> 2) & 0x03
-		if neighType == NeighTypeMPR {
-			for _, addr := range lm.NeighborAddresses {
-				if addr.String() == nm.routerID {
-					isMPRSelector = true
-					break
-				}
-			}
-		}
-	}
+	isMPRSelector := nm.checkMPRSelection(hello)
 	if isMPRSelector && neigh.Symmetric {
 		nm.mprSelectors[origStr] = expTime
 	}
 
 	// 3. Update 2-Hop Neighbors
-	if neigh.Symmetric {
-		// Clear previous 2-hop list for this sender to rebuild
-		nm.twoHopLinks[origStr] = make(map[string]time.Time)
-
-		for _, lm := range hello.LinkMessages {
-			neighType := (lm.LinkCode >> 2) & 0x03
-			// Only learn from symmetric or MPR neighbors of the sender
-			if neighType == NeighTypeSym || neighType == NeighTypeMPR {
-				for _, addr := range lm.NeighborAddresses {
-					addrStr := addr.String()
-					// Exclude ourselves and direct 1-hop neighbor itself
-					if addrStr != nm.routerID && addrStr != origStr {
-						nm.twoHopLinks[origStr][addrStr] = expTime
-					}
-				}
-			}
-		}
-	} else {
-		// If neighbor is no longer symmetric, clear 2-hop links
-		delete(nm.twoHopLinks, origStr)
-	}
+	nm.updateTwoHopLinks(origStr, hello, expTime, neigh.Symmetric)
 
 	// 4. Recalculate MPR Set if Link/Neighbor state changed
 	stateChanged := (oldState != link.State)
@@ -201,13 +157,60 @@ func (nm *NeighborManager) ProcessHello(ctx context.Context, senderIP net.IP, or
 	}
 }
 
+func (nm *NeighborManager) checkLocalSymmetricLink(hello HelloMessage) bool {
+	for _, lm := range hello.LinkMessages {
+		linkType := lm.LinkCode & 0x03
+		neighType := (lm.LinkCode >> 2) & 0x03
+
+		for _, addr := range lm.NeighborAddresses {
+			if addr.String() == nm.routerID {
+				if linkType == LinkTypeSym || linkType == LinkTypeAsym || neighType == NeighTypeSym || neighType == NeighTypeMPR {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (nm *NeighborManager) checkMPRSelection(hello HelloMessage) bool {
+	for _, lm := range hello.LinkMessages {
+		neighType := (lm.LinkCode >> 2) & 0x03
+		if neighType == NeighTypeMPR {
+			for _, addr := range lm.NeighborAddresses {
+				if addr.String() == nm.routerID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (nm *NeighborManager) updateTwoHopLinks(origStr string, hello HelloMessage, expTime time.Time, symmetric bool) {
+	if symmetric {
+		nm.twoHopLinks[origStr] = make(map[string]time.Time)
+
+		for _, lm := range hello.LinkMessages {
+			neighType := (lm.LinkCode >> 2) & 0x03
+			if neighType == NeighTypeSym || neighType == NeighTypeMPR {
+				for _, addr := range lm.NeighborAddresses {
+					addrStr := addr.String()
+					if addrStr != nm.routerID && addrStr != origStr {
+						nm.twoHopLinks[origStr][addrStr] = expTime
+					}
+				}
+			}
+		}
+	} else {
+		delete(nm.twoHopLinks, origStr)
+	}
+}
+
 // Recalculate MPRs based on RFC 3626 Section 8.3
 func (nm *NeighborManager) recalculateMPRs(ctx context.Context) {
 	newMpr := make(map[string]bool)
 
-	// N = set of symmetric 1-hop neighbors
-	// N2 = set of symmetric 2-hop neighbors
-	// We want to select subset of N to cover N2.
 	symmetric1Hop := make(map[string]*NeighborTuple)
 	for ip, n := range nm.neighbors {
 		if n.Symmetric && n.Willingness > WillNever {
@@ -215,29 +218,8 @@ func (nm *NeighborManager) recalculateMPRs(ctx context.Context) {
 		}
 	}
 
-	// Collect 2-hop neighbors that are not in N and are not ourselves
-	twoHopNeighbors := make(map[string]map[string]bool) // Key: 2-hop IP -> Set of 1-hop IPs that reach it
-	for oneHopIP, twoHops := range nm.twoHopLinks {
-		// Verify if the 1-hop node is symmetric
-		if n, ok := symmetric1Hop[oneHopIP]; !ok || !n.Symmetric {
-			continue
-		}
-		for twoHopIP, exp := range twoHops {
-			if time.Now().After(exp) {
-				continue
-			}
-			// Exclude if it is a 1-hop symmetric neighbor
-			if _, is1Hop := symmetric1Hop[twoHopIP]; is1Hop {
-				continue
-			}
-			if _, ok := twoHopNeighbors[twoHopIP]; !ok {
-				twoHopNeighbors[twoHopIP] = make(map[string]bool)
-			}
-			twoHopNeighbors[twoHopIP][oneHopIP] = true
-		}
-	}
+	twoHopNeighbors := nm.buildTwoHopNeighborsMap(symmetric1Hop)
 
-	// 1. Select 1-hop nodes that are the ONLY way to reach some 2-hop nodes
 	for _, oneHops := range twoHopNeighbors {
 		if len(oneHops) == 1 {
 			for oneHopIP := range oneHops {
@@ -246,7 +228,6 @@ func (nm *NeighborManager) recalculateMPRs(ctx context.Context) {
 		}
 	}
 
-	// Remove covered 2-hop neighbors from consideration
 	for {
 		uncovered := make(map[string]map[string]bool)
 		for twoHopIP, oneHops := range twoHopNeighbors {
@@ -266,48 +247,8 @@ func (nm *NeighborManager) recalculateMPRs(ctx context.Context) {
 			break
 		}
 
-		// 2. Select the 1-hop node that covers the maximum number of remaining uncovered 2-hop nodes.
-		// If ties, choose the one with higher Willingness.
-		// If still ties, choose the one with higher 1-hop neighbor count.
-		var bestOneHop string
-		bestCoverCount := -1
-		bestWill := uint8(0)
-
-		for oneHopIP, neigh := range symmetric1Hop {
-			// Count how many uncovered 2-hop nodes this 1-hop covers
-			coverCount := 0
-			for _, oneHops := range uncovered {
-				if oneHops[oneHopIP] {
-					coverCount++
-				}
-			}
-
-			if coverCount == 0 {
-				continue
-			}
-
-			if coverCount > bestCoverCount {
-				bestCoverCount = coverCount
-				bestOneHop = oneHopIP
-				bestWill = neigh.Willingness
-			} else if coverCount == bestCoverCount {
-				// Tie breaking
-				if neigh.Willingness > bestWill {
-					bestOneHop = oneHopIP
-					bestWill = neigh.Willingness
-				} else if neigh.Willingness == bestWill {
-					// Compare degrees (total number of 2-hop links it provides)
-					currentDegree := len(nm.twoHopLinks[oneHopIP])
-					bestDegree := len(nm.twoHopLinks[bestOneHop])
-					if currentDegree > bestDegree {
-						bestOneHop = oneHopIP
-					}
-				}
-			}
-		}
-
+		bestOneHop := nm.selectGreedyMPR(symmetric1Hop, uncovered)
 		if bestOneHop == "" {
-			// No more coverage possible
 			break
 		}
 
@@ -315,6 +256,66 @@ func (nm *NeighborManager) recalculateMPRs(ctx context.Context) {
 	}
 
 	nm.mprSet = newMpr
+}
+
+func (nm *NeighborManager) buildTwoHopNeighborsMap(symmetric1Hop map[string]*NeighborTuple) map[string]map[string]bool {
+	twoHopNeighbors := make(map[string]map[string]bool)
+	now := time.Now()
+	for oneHopIP, twoHops := range nm.twoHopLinks {
+		if n, ok := symmetric1Hop[oneHopIP]; !ok || !n.Symmetric {
+			continue
+		}
+		for twoHopIP, exp := range twoHops {
+			if now.After(exp) {
+				continue
+			}
+			if _, is1Hop := symmetric1Hop[twoHopIP]; is1Hop {
+				continue
+			}
+			if _, ok := twoHopNeighbors[twoHopIP]; !ok {
+				twoHopNeighbors[twoHopIP] = make(map[string]bool)
+			}
+			twoHopNeighbors[twoHopIP][oneHopIP] = true
+		}
+	}
+	return twoHopNeighbors
+}
+
+func (nm *NeighborManager) selectGreedyMPR(symmetric1Hop map[string]*NeighborTuple, uncovered map[string]map[string]bool) string {
+	var bestOneHop string
+	bestCoverCount := -1
+	bestWill := uint8(0)
+
+	for oneHopIP, neigh := range symmetric1Hop {
+		coverCount := 0
+		for _, oneHops := range uncovered {
+			if oneHops[oneHopIP] {
+				coverCount++
+			}
+		}
+
+		if coverCount == 0 {
+			continue
+		}
+
+		if coverCount > bestCoverCount {
+			bestCoverCount = coverCount
+			bestOneHop = oneHopIP
+			bestWill = neigh.Willingness
+		} else if coverCount == bestCoverCount {
+			if neigh.Willingness > bestWill {
+				bestOneHop = oneHopIP
+				bestWill = neigh.Willingness
+			} else if neigh.Willingness == bestWill {
+				currentDegree := len(nm.twoHopLinks[oneHopIP])
+				bestDegree := len(nm.twoHopLinks[bestOneHop])
+				if currentDegree > bestDegree {
+					bestOneHop = oneHopIP
+				}
+			}
+		}
+	}
+	return bestOneHop
 }
 
 // AgeOut ages out expired links, neighbors, 2-hop tuples, and MPR selector states.

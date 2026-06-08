@@ -313,11 +313,11 @@ func buildHelloMessage() []byte {
 	_ = binary.Write(buf, binary.BigEndian, uint16(18)) // Command (uint16)
 
 	// Body
-	buf.WriteByte(RouteOlsr)                       // Route Type (OLSR)
+	buf.WriteByte(RouteOlsr)                           // Route Type (OLSR)
 	_ = binary.Write(buf, binary.BigEndian, uint16(0)) // Instance
 	_ = binary.Write(buf, binary.BigEndian, uint32(0)) // Session ID (uint32)
-	buf.WriteByte(0)                               // Receive Notify (uint8)
-	buf.WriteByte(0)                               // Synchronous (uint8)
+	buf.WriteByte(0)                                   // Receive Notify (uint8)
+	buf.WriteByte(0)                                   // Synchronous (uint8)
 
 	data := buf.Bytes()
 	if len(data) > 65535 {
@@ -349,12 +349,12 @@ func buildUnicastRouteMessage(cmd uint16, prefix string, nexthop string, ifindex
 	_ = binary.Write(buf, binary.BigEndian, cmd)       // Command (uint16)
 
 	// --- Body ---
-	buf.WriteByte(RouteOlsr)                          // Route Type (11)
+	buf.WriteByte(RouteOlsr)                              // Route Type (11)
 	_ = binary.Write(buf, binary.BigEndian, uint16(0))    // Instance
 	_ = binary.Write(buf, binary.BigEndian, uint32(0))    // Flags
 	_ = binary.Write(buf, binary.BigEndian, uint32(0x07)) // Message Flags: NEXTHOP (0x01) | DISTANCE (0x02) | METRIC (0x04)
-	buf.WriteByte(1)                                  // SAFI (UNICAST = 1)
-	buf.WriteByte(2)                                  // Family (AF_INET = 2)
+	buf.WriteByte(1)                                      // SAFI (UNICAST = 1)
+	buf.WriteByte(2)                                      // Family (AF_INET = 2)
 
 	psize := (ones + 7) / 8
 	if ones < 0 || ones > 32 {
@@ -364,11 +364,11 @@ func buildUnicastRouteMessage(cmd uint16, prefix string, nexthop string, ifindex
 	buf.Write(ip4[:psize])     // Prefix IP
 
 	// Nexthops
-	_ = binary.Write(buf, binary.BigEndian, uint16(1))       // Nexthop Count (uint16)
-	_ = binary.Write(buf, binary.BigEndian, uint32(0))       // Nexthop VRF ID (uint32)
-	buf.WriteByte(2)                                     // Nexthop Type (NEXTHOP_TYPE_IPV4 = 2)
-	buf.WriteByte(0)                                     // Nexthop Flags (uint8)
-	buf.Write(nh4)                                       // Nexthop Address
+	_ = binary.Write(buf, binary.BigEndian, uint16(1)) // Nexthop Count (uint16)
+	_ = binary.Write(buf, binary.BigEndian, uint32(0)) // Nexthop VRF ID (uint32)
+	buf.WriteByte(2)                                   // Nexthop Type (NEXTHOP_TYPE_IPV4 = 2)
+	buf.WriteByte(0)                                   // Nexthop Flags (uint8)
+	buf.Write(nh4)                                     // Nexthop Address
 	if ifindex < 0 {
 		return nil, fmt.Errorf("invalid interface index: %d", ifindex)
 	}

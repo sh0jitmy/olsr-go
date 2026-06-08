@@ -27,10 +27,10 @@ const (
 
 // ZAPI Commands for modern FRRouting (v6)
 const (
-	ZapiMarker               uint8  = 0xfe
-	ZapiVersion6             uint8  = 6
-	ZebraIpmrRouteAdd        uint16 = 59
-	ZebraIpmrRouteDel        uint16 = 60
+	ZapiMarker        uint8  = 0xfe
+	ZapiVersion6      uint8  = 6
+	ZebraIpmrRouteAdd uint16 = 59
+	ZebraIpmrRouteDel uint16 = 60
 )
 
 // BuildIpmrMessage constructs a raw ZAPI v6 binary packet for multicast route additions/deletions.
@@ -43,70 +43,12 @@ func BuildIpmrMessage(cmd uint16, srcIP, grpIP net.IP, iif int, oifs []int) ([]b
 
 	buf := new(bytes.Buffer)
 
-	// --- 1. ZAPI Header ---
-	// Size (uint16 placeholder, filled later)
-	if err := binary.Write(buf, binary.BigEndian, uint16(0)); err != nil {
-		return nil, err
-	}
-	// Marker (uint8)
-	if err := buf.WriteByte(ZapiMarker); err != nil {
-		return nil, err
-	}
-	// Version (uint8)
-	if err := buf.WriteByte(ZapiVersion6); err != nil {
-		return nil, err
-	}
-	// VRF ID (uint32)
-	if err := binary.Write(buf, binary.BigEndian, uint32(0)); err != nil {
-		return nil, err
-	}
-	// Command (uint16)
-	if err := binary.Write(buf, binary.BigEndian, cmd); err != nil {
+	if err := writeIpmrHeader(buf, cmd); err != nil {
 		return nil, err
 	}
 
-	// --- 2. ZAPI IPMR Body ---
-	// Family (uint8, IPv4 = 2)
-	if err := buf.WriteByte(uint8(2)); err != nil {
+	if err := writeIpmrBody(buf, srcIPv4, grpIPv4, iif, oifs); err != nil {
 		return nil, err
-	}
-	// Source IP (4 bytes)
-	if _, err := buf.Write(srcIPv4); err != nil {
-		return nil, err
-	}
-	// Group IP (4 bytes)
-	if _, err := buf.Write(grpIPv4); err != nil {
-		return nil, err
-	}
-	// IIF (uint32)
-	if iif < 0 {
-		return nil, fmt.Errorf("invalid IIF index: %d", iif)
-	}
-	//nolint:gosec // G115: iif is pre-validated to be >= 0
-	if err := binary.Write(buf, binary.BigEndian, uint32(iif)); err != nil {
-		return nil, err
-	}
-	// Num OIFs (uint32)
-	if len(oifs) > 65535 {
-		return nil, fmt.Errorf("invalid OIFs count: %d", len(oifs))
-	}
-	//nolint:gosec // G115: length is pre-validated to be <= 65535
-	if err := binary.Write(buf, binary.BigEndian, uint32(len(oifs))); err != nil {
-		return nil, err
-	}
-	// OIF array (each: interface index(uint32) + TTL(uint32))
-	for _, oif := range oifs {
-		if oif < 0 {
-			return nil, fmt.Errorf("invalid OIF index: %d", oif)
-		}
-		//nolint:gosec // G115: oif is pre-validated to be >= 0
-		if err := binary.Write(buf, binary.BigEndian, uint32(oif)); err != nil {
-			return nil, err
-		}
-		// Default multicast TTL = 1 for mesh link forwarding
-		if err := binary.Write(buf, binary.BigEndian, uint32(1)); err != nil {
-			return nil, err
-		}
 	}
 
 	// Fill length header
@@ -118,4 +60,74 @@ func BuildIpmrMessage(cmd uint16, srcIP, grpIP net.IP, iif int, oifs []int) ([]b
 	binary.BigEndian.PutUint16(data[0:2], uint16(len(data)))
 
 	return data, nil
+}
+
+func writeIpmrHeader(buf *bytes.Buffer, cmd uint16) error {
+	// Size (uint16 placeholder, filled later)
+	if err := binary.Write(buf, binary.BigEndian, uint16(0)); err != nil {
+		return err
+	}
+	// Marker (uint8)
+	if err := buf.WriteByte(ZapiMarker); err != nil {
+		return err
+	}
+	// Version (uint8)
+	if err := buf.WriteByte(ZapiVersion6); err != nil {
+		return err
+	}
+	// VRF ID (uint32)
+	if err := binary.Write(buf, binary.BigEndian, uint32(0)); err != nil {
+		return err
+	}
+	// Command (uint16)
+	if err := binary.Write(buf, binary.BigEndian, cmd); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeIpmrBody(buf *bytes.Buffer, srcIPv4, grpIPv4 net.IP, iif int, oifs []int) error {
+	// Family (uint8, IPv4 = 2)
+	if err := buf.WriteByte(uint8(2)); err != nil {
+		return err
+	}
+	// Source IP (4 bytes)
+	if _, err := buf.Write(srcIPv4); err != nil {
+		return err
+	}
+	// Group IP (4 bytes)
+	if _, err := buf.Write(grpIPv4); err != nil {
+		return err
+	}
+	// IIF (uint32)
+	if iif < 0 {
+		return fmt.Errorf("invalid IIF index: %d", iif)
+	}
+	//nolint:gosec // G115: iif is pre-validated to be >= 0
+	if err := binary.Write(buf, binary.BigEndian, uint32(iif)); err != nil {
+		return err
+	}
+	// Num OIFs (uint32)
+	if len(oifs) > 65535 {
+		return fmt.Errorf("invalid OIFs count: %d", len(oifs))
+	}
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(oifs))); err != nil {
+		return err
+	}
+	// OIF array (each: interface index(uint32) + TTL(uint32))
+	for _, oif := range oifs {
+		if oif < 0 {
+			return fmt.Errorf("invalid OIF index: %d", oif)
+		}
+		//nolint:gosec // G115: oif is pre-validated to be >= 0
+		if err := binary.Write(buf, binary.BigEndian, uint32(oif)); err != nil {
+			return err
+		}
+		// Default multicast TTL = 1 for mesh link forwarding
+		if err := binary.Write(buf, binary.BigEndian, uint32(1)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
