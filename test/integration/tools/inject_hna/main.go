@@ -48,7 +48,7 @@ func main() {
 			fmt.Printf("Error requesting %s: %v\n", url, err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		respBytes, _ := io.ReadAll(resp.Body)
 		fmt.Printf("[%s] %s -> Status: %d, Body: %s\n", method, url, resp.StatusCode, string(respBytes))
 	}

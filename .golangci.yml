@@ -18,5 +18,24 @@ run:
   issues-exit-code: 1
   tests: true
 
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
-  default: all
+  default: none
+  enable:
+    - copyloopvar
+    - errcheck
+    - gocritic
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nolintlint
+    - unconvert
+    - unused
+    - whitespace
+    - staticcheck

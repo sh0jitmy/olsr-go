@@ -173,7 +173,9 @@ func (d *Daemon) handleSignals(sigChan chan os.Signal) {
 
 func (d *Daemon) Stop() {
 	d.cancel()
-	d.apiServer.Stop(context.Background())
+	if err := d.apiServer.Stop(context.Background()); err != nil {
+		slog.Error("Failed to stop API server", "error", err)
+	}
 	if d.zapiClient != nil {
 		d.zapiClient.Stop()
 	}
@@ -615,7 +617,7 @@ func (d *Daemon) broadcastPacket(pkt *olsr.Packet) {
 		}
 
 		_, _ = conn.Write(data)
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 
@@ -630,7 +632,9 @@ func (d *Daemon) udpReceiverLoop() {
 		slog.Error("Failed to bind UDP port 698 for receiver, running in virtual simulation mode", "error", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	buf := make([]byte, 65535)
 	for {
@@ -737,7 +741,7 @@ type RouteSnapshot struct {
 }
 
 func (d *Daemon) saveSnapshots() {
-	_ = os.MkdirAll(PersistenceDir, 0755)
+	_ = os.MkdirAll(PersistenceDir, 0750)
 
 	topoSnap := TopologySnapshot{
 		Timestamp: time.Now(),
@@ -746,7 +750,7 @@ func (d *Daemon) saveSnapshots() {
 	}
 	topoData, err := json.MarshalIndent(topoSnap, "", "  ")
 	if err == nil {
-		_ = os.WriteFile(filepath.Join(PersistenceDir, "topology_snapshot.json"), topoData, 0644)
+		_ = os.WriteFile(filepath.Join(PersistenceDir, "topology_snapshot.json"), topoData, 0600)
 	}
 
 	routeSnap := RouteSnapshot{
@@ -756,6 +760,6 @@ func (d *Daemon) saveSnapshots() {
 	}
 	routeData, err := json.MarshalIndent(routeSnap, "", "  ")
 	if err == nil {
-		_ = os.WriteFile(filepath.Join(PersistenceDir, "route_snapshot.json"), routeData, 0644)
+		_ = os.WriteFile(filepath.Join(PersistenceDir, "route_snapshot.json"), routeData, 0600)
 	}
 }

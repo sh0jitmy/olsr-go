@@ -79,15 +79,27 @@ func BuildIpmrMessage(cmd uint16, srcIP, grpIP net.IP, iif int, oifs []int) ([]b
 		return nil, err
 	}
 	// IIF (uint32)
+	if iif < 0 {
+		return nil, fmt.Errorf("invalid IIF index: %d", iif)
+	}
+	//nolint:gosec // G115: iif is pre-validated to be >= 0
 	if err := binary.Write(buf, binary.BigEndian, uint32(iif)); err != nil {
 		return nil, err
 	}
 	// Num OIFs (uint32)
+	if len(oifs) > 65535 {
+		return nil, fmt.Errorf("invalid OIFs count: %d", len(oifs))
+	}
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(oifs))); err != nil {
 		return nil, err
 	}
 	// OIF array (each: interface index(uint32) + TTL(uint32))
 	for _, oif := range oifs {
+		if oif < 0 {
+			return nil, fmt.Errorf("invalid OIF index: %d", oif)
+		}
+		//nolint:gosec // G115: oif is pre-validated to be >= 0
 		if err := binary.Write(buf, binary.BigEndian, uint32(oif)); err != nil {
 			return nil, err
 		}
@@ -99,6 +111,10 @@ func BuildIpmrMessage(cmd uint16, srcIP, grpIP net.IP, iif int, oifs []int) ([]b
 
 	// Fill length header
 	data := buf.Bytes()
+	if len(data) > 65535 {
+		return nil, fmt.Errorf("multicast route message size exceeds maximum uint16 size")
+	}
+	//nolint:gosec // G115: length is pre-validated to be <= 65535
 	binary.BigEndian.PutUint16(data[0:2], uint16(len(data)))
 
 	return data, nil

@@ -42,7 +42,7 @@ func main() {
 			fmt.Printf("HTTP client error for %s: %v\n", url, err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		fmt.Printf("%s -> Status: %d, Body:\n%s\n\n", url, resp.StatusCode, string(body))
 	}

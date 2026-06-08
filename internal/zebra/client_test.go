@@ -28,14 +28,14 @@ import (
 
 func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 	socketPath := fmt.Sprintf("/tmp/z-%d.api", time.Now().UnixNano())
-	defer os.Remove(socketPath)
+	defer func() { _ = os.Remove(socketPath) }()
 
 	// Start a mock Zebra Unix socket server
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("failed to start mock zebra listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	packetChan := make(chan []byte, 10)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,7 +48,7 @@ func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 1024)
 				for {
 					n, err := c.Read(buf)
