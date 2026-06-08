@@ -77,6 +77,14 @@ func TestZAPIClientUnicastAndMulticast(t *testing.T) {
 		t.Fatalf("timeout waiting for ZAPI client connection")
 	}
 
+	// Wait for client to mark itself as connected (avoid race condition)
+	for i := 0; i < 100; i++ {
+		if client.IsConnected() {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	// Test Unicast route insertion
 	err = client.AddUnicastRoute("10.0.0.0/24", "192.168.1.1", 5, 2)
 	if err != nil {
