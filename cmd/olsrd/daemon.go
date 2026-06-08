@@ -283,62 +283,78 @@ func (d *Daemon) routeInstallationLoop(sub *eventbus.Subscription) {
 		switch action {
 		case "add":
 			route := data["route"].(olsr.Route)
-			if d.Standalone {
-				err := d.urouteRouter.AddRoute(route.Prefix, route.NextHop, route.IfaceIndex, route.Metric)
-				if err != nil {
-					slog.Error("Standalone Unicast add failed", "prefix", route.Prefix, "error", err)
-				} else {
-					slog.Info("Standalone Unicast route added", "prefix", route.Prefix, "nextHop", route.NextHop)
-				}
-			} else if d.zapiClient != nil {
-				err := d.zapiClient.AddUnicastRoute(route.Prefix, route.NextHop, route.IfaceIndex, route.Metric)
-				if err != nil {
-					slog.Error("ZAPI Unicast add failed", "prefix", route.Prefix, "error", err)
-					metrics.ZapiFailureTotal.Inc()
-				} else {
-					metrics.ZapiTxTotal.Inc()
-				}
-			}
+			d.handleUnicastAdd(route)
 		case "delete":
 			route := data["route"].(olsr.Route)
-			if d.Standalone {
-				err := d.urouteRouter.DeleteRoute(route.Prefix, route.NextHop, route.IfaceIndex)
-				if err != nil {
-					slog.Error("Standalone Unicast delete failed", "prefix", route.Prefix, "error", err)
-				} else {
-					slog.Info("Standalone Unicast route deleted", "prefix", route.Prefix)
-				}
-			} else if d.zapiClient != nil {
-				err := d.zapiClient.DeleteUnicastRoute(route.Prefix, route.NextHop, route.IfaceIndex)
-				if err != nil {
-					slog.Error("ZAPI Unicast delete failed", "prefix", route.Prefix, "error", err)
-					metrics.ZapiFailureTotal.Inc()
-				} else {
-					metrics.ZapiTxTotal.Inc()
-				}
-			}
+			d.handleUnicastDelete(route)
 		case "add_multicast":
 			entry := data["entry"].(*olsr.MulticastForwardingEntry)
-			if d.mrouteRouter != nil {
-				err := d.mrouteRouter.AddMulticastRoute(entry.SourceIP, entry.GroupID, entry.IIF, entry.OIFs)
-				if err != nil {
-					slog.Error("Kernel Multicast add failed", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
-					metrics.ZapiFailureTotal.Inc()
-				} else {
-					metrics.ZapiTxTotal.Inc()
-				}
-			}
+			d.handleMulticastAdd(entry)
 		case "delete_multicast":
 			entry := data["entry"].(*olsr.MulticastForwardingEntry)
-			if d.mrouteRouter != nil {
-				err := d.mrouteRouter.DeleteMulticastRoute(entry.SourceIP, entry.GroupID, entry.IIF, entry.OIFs)
-				if err != nil {
-					slog.Error("Kernel Multicast delete failed", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
-					metrics.ZapiFailureTotal.Inc()
-				} else {
-					metrics.ZapiTxTotal.Inc()
-				}
-			}
+			d.handleMulticastDelete(entry)
+		}
+	}
+}
+
+func (d *Daemon) handleUnicastAdd(route olsr.Route) {
+	if d.Standalone {
+		err := d.urouteRouter.AddRoute(route.Prefix, route.NextHop, route.IfaceIndex, route.Metric)
+		if err != nil {
+			slog.Error("Standalone Unicast add failed", "prefix", route.Prefix, "error", err)
+		} else {
+			slog.Info("Standalone Unicast route added", "prefix", route.Prefix, "nextHop", route.NextHop)
+		}
+	} else if d.zapiClient != nil {
+		err := d.zapiClient.AddUnicastRoute(route.Prefix, route.NextHop, route.IfaceIndex, route.Metric)
+		if err != nil {
+			slog.Error("ZAPI Unicast add failed", "prefix", route.Prefix, "error", err)
+			metrics.ZapiFailureTotal.Inc()
+		} else {
+			metrics.ZapiTxTotal.Inc()
+		}
+	}
+}
+
+func (d *Daemon) handleUnicastDelete(route olsr.Route) {
+	if d.Standalone {
+		err := d.urouteRouter.DeleteRoute(route.Prefix, route.NextHop, route.IfaceIndex)
+		if err != nil {
+			slog.Error("Standalone Unicast delete failed", "prefix", route.Prefix, "error", err)
+		} else {
+			slog.Info("Standalone Unicast route deleted", "prefix", route.Prefix)
+		}
+	} else if d.zapiClient != nil {
+		err := d.zapiClient.DeleteUnicastRoute(route.Prefix, route.NextHop, route.IfaceIndex)
+		if err != nil {
+			slog.Error("ZAPI Unicast delete failed", "prefix", route.Prefix, "error", err)
+			metrics.ZapiFailureTotal.Inc()
+		} else {
+			metrics.ZapiTxTotal.Inc()
+		}
+	}
+}
+
+func (d *Daemon) handleMulticastAdd(entry *olsr.MulticastForwardingEntry) {
+	if d.mrouteRouter != nil {
+		err := d.mrouteRouter.AddMulticastRoute(entry.SourceIP, entry.GroupID, entry.IIF, entry.OIFs)
+		if err != nil {
+			slog.Error("Kernel Multicast add failed", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
+			metrics.ZapiFailureTotal.Inc()
+		} else {
+			metrics.ZapiTxTotal.Inc()
+		}
+	}
+}
+
+func (d *Daemon) handleMulticastDelete(entry *olsr.MulticastForwardingEntry) {
+	if d.mrouteRouter != nil {
+		err := d.mrouteRouter.DeleteMulticastRoute(entry.SourceIP, entry.GroupID, entry.IIF, entry.OIFs)
+		if err != nil {
+			slog.Error("Kernel Multicast delete failed", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
+			metrics.ZapiFailureTotal.Inc()
+		} else {
+			metrics.ZapiTxTotal.Inc()
 		}
 	}
 }
@@ -676,56 +692,85 @@ func (d *Daemon) processReceivedData(data []byte, raddr net.IP) {
 
 		switch msg.Header.Type {
 		case olsr.MsgTypeHello:
-			metrics.HelloRxTotal.Inc()
-			if hello, ok := msg.Body.(olsr.HelloMessage); ok {
-				d.neighMgr.ProcessHello(d.ctx, raddr, msg.Header.OriginatorAddress, hello, msg.Header.Vtime)
-			}
+			d.processHello(raddr, msg)
 		case olsr.MsgTypeTC:
-			metrics.TCRxTotal.Inc()
-			if tc, ok := msg.Body.(olsr.TCMessage); ok {
-				d.topoMgr.ProcessTC(d.ctx, msg.Header.OriginatorAddress, tc, msg.Header.Vtime)
-			}
+			d.processTC(msg)
 		case olsr.MsgTypeMID:
-			if mid, ok := msg.Body.(olsr.MIDMessage); ok {
-				d.topoMgr.ProcessMID(d.ctx, msg.Header.OriginatorAddress, mid, msg.Header.Vtime)
-			}
+			d.processMID(msg)
 		case olsr.MsgTypeHNA:
-			if hna, ok := msg.Body.(olsr.HNAMessage); ok {
-				d.hnaMgr.ProcessHNA(d.ctx, msg.Header.OriginatorAddress, hna, msg.Header.Vtime)
-			}
+			d.processHNA(msg)
 		case olsr.MsgTypeSourceClaim:
-			if sc, ok := msg.Body.(olsr.SourceClaimMessage); ok {
-				d.molsrMgr.ProcessSourceClaim(d.ctx, msg.Header.OriginatorAddress, sc, msg.Header.Vtime)
-			}
+			d.processSourceClaim(msg)
 		case olsr.MsgTypeConfirmParent:
-			if cp, ok := msg.Body.(olsr.ConfirmParentMessage); ok {
-				d.molsrMgr.ProcessConfirmParent(d.ctx, msg.Header.OriginatorAddress, cp, msg.Header.Vtime)
-			}
+			d.processConfirmParent(msg)
 		}
 
-		if msg.Header.TTL > 1 && msg.Header.Type != olsr.MsgTypeHello && msg.Header.Type != olsr.MsgTypeConfirmParent {
-			senderStr := raddr.String()
-			isMprOfSender := false
-			for _, mpr := range d.neighMgr.GetMPRSelectors() {
-				if mpr == senderStr {
-					isMprOfSender = true
-					break
-				}
-			}
+		if d.shouldForwardMessage(raddr, msg) {
+			forwardedMsg := msg
+			forwardedMsg.Header.TTL--
+			forwardedMsg.Header.HopCount++
 
-			if isMprOfSender || msg.Header.Type == olsr.MsgTypeSourceClaim {
-				forwardedMsg := msg
-				forwardedMsg.Header.TTL--
-				forwardedMsg.Header.HopCount++
-
-				fwdPkt := &olsr.Packet{
-					Header:   pkt.Header,
-					Messages: []olsr.Message{forwardedMsg},
-				}
-				d.broadcastPacket(fwdPkt)
+			fwdPkt := &olsr.Packet{
+				Header:   pkt.Header,
+				Messages: []olsr.Message{forwardedMsg},
 			}
+			d.broadcastPacket(fwdPkt)
 		}
 	}
+}
+
+func (d *Daemon) processHello(raddr net.IP, msg olsr.Message) {
+	metrics.HelloRxTotal.Inc()
+	if hello, ok := msg.Body.(olsr.HelloMessage); ok {
+		d.neighMgr.ProcessHello(d.ctx, raddr, msg.Header.OriginatorAddress, hello, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) processTC(msg olsr.Message) {
+	metrics.TCRxTotal.Inc()
+	if tc, ok := msg.Body.(olsr.TCMessage); ok {
+		d.topoMgr.ProcessTC(d.ctx, msg.Header.OriginatorAddress, tc, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) processMID(msg olsr.Message) {
+	if mid, ok := msg.Body.(olsr.MIDMessage); ok {
+		d.topoMgr.ProcessMID(d.ctx, msg.Header.OriginatorAddress, mid, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) processHNA(msg olsr.Message) {
+	if hna, ok := msg.Body.(olsr.HNAMessage); ok {
+		d.hnaMgr.ProcessHNA(d.ctx, msg.Header.OriginatorAddress, hna, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) processSourceClaim(msg olsr.Message) {
+	if sc, ok := msg.Body.(olsr.SourceClaimMessage); ok {
+		d.molsrMgr.ProcessSourceClaim(d.ctx, msg.Header.OriginatorAddress, sc, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) processConfirmParent(msg olsr.Message) {
+	if cp, ok := msg.Body.(olsr.ConfirmParentMessage); ok {
+		d.molsrMgr.ProcessConfirmParent(d.ctx, msg.Header.OriginatorAddress, cp, msg.Header.Vtime)
+	}
+}
+
+func (d *Daemon) shouldForwardMessage(raddr net.IP, msg olsr.Message) bool {
+	if msg.Header.TTL <= 1 || msg.Header.Type == olsr.MsgTypeHello || msg.Header.Type == olsr.MsgTypeConfirmParent {
+		return false
+	}
+	if msg.Header.Type == olsr.MsgTypeSourceClaim {
+		return true
+	}
+	senderStr := raddr.String()
+	for _, mpr := range d.neighMgr.GetMPRSelectors() {
+		if mpr == senderStr {
+			return true
+		}
+	}
+	return false
 }
 
 type TopologySnapshot struct {

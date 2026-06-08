@@ -29,11 +29,11 @@ import (
 
 const (
 	//nolint:gosec // G101: e2e test JWT secret key is hardcoded by design for test containers
-	JWTSecret       = "e2e-secret-key-for-olsrd"
-	R1API           = "http://localhost:8081"
-	R2API           = "http://localhost:8082"
-	R3API           = "http://localhost:8083"
-	ClabTopology    = "clab/topology.yaml"
+	JWTSecret    = "e2e-secret-key-for-olsrd"
+	R1API        = "http://localhost:8081"
+	R2API        = "http://localhost:8082"
+	R3API        = "http://localhost:8083"
+	ClabTopology = "clab/topology.yaml"
 )
 
 func createTestToken(subject string) string {
@@ -111,6 +111,19 @@ func TestE2EContainerlabOLSR(t *testing.T) {
 	}()
 
 	// 4. Wait for OLSR Daemon Start & Neighbor Formation
+	e2eWaitForConvergence(t, token)
+
+	// 5. Test HNA Route Propagation (Unicast routing)
+	e2eTestHNARoutePropagation(t, token)
+
+	// 6. Test MOLSR Multicast Route Installation
+	e2eTestMulticastForwarding(t, token)
+
+	// 7. Test Zebra Disconnect Recovery
+	e2eTestZebraRecovery(t)
+}
+
+func e2eWaitForConvergence(t *testing.T, token string) {
 	t.Log("Waiting for routers to establish links (convergence)...")
 	convergenceStart := time.Now()
 	converged := false
@@ -141,8 +154,9 @@ func TestE2EContainerlabOLSR(t *testing.T) {
 	if !converged {
 		t.Fatalf("routers failed to establish neighbors within timeout")
 	}
+}
 
-	// 5. Test HNA Route Propagation (Unicast routing)
+func e2eTestHNARoutePropagation(t *testing.T, token string) {
 	t.Log("Testing HNA route propagation...")
 	hnaPayload := map[string]string{"prefix": "172.16.100.0/24"}
 	payloadBytes, _ := json.Marshal(hnaPayload)
@@ -171,8 +185,9 @@ func TestE2EContainerlabOLSR(t *testing.T) {
 	if !learned {
 		t.Fatalf("R3 failed to learn unicast HNA route")
 	}
+}
 
-	// 6. Test MOLSR Multicast Route Installation
+func e2eTestMulticastForwarding(t *testing.T, token string) {
 	t.Log("Testing MOLSR multicast route installation...")
 
 	// R1 acts as Source: inject SourceClaim for flow 10.0.1.1 (R1 IP) -> 239.1.1.1
@@ -204,8 +219,9 @@ func TestE2EContainerlabOLSR(t *testing.T) {
 	if !mcastProgrammed {
 		t.Fatalf("R2 failed to program kernel multicast forwarding cache")
 	}
+}
 
-	// 7. Test Zebra Disconnect Recovery
+func e2eTestZebraRecovery(t *testing.T) {
 	t.Log("Testing Zebra disconnect recovery...")
 	// Kill zebra on R3
 	killCmd := exec.Command("docker", "exec", "clab-olsr-lab-r3", "killall", "zebra")

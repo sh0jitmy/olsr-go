@@ -25,7 +25,14 @@ build:
 test:
 	$(GO) test -race ./internal/...
 
-lint:
+fmt-check:
+	@if [ -n "$$(gofmt -l . | grep -v 'vendor/')" ]; then \
+		echo "Go files are not formatted. Please run 'make fmt':"; \
+		gofmt -l .; \
+		exit 1; \
+	fi
+
+lint: fmt-check
 	GOOS=linux golangci-lint run
 
 fmt:

@@ -175,8 +175,15 @@ func TestSerializeDeserializePacket(t *testing.T) {
 		t.Fatalf("messages count mismatch: expected %d, got %d", len(pkt.Messages), len(deserialized.Messages))
 	}
 
-	// Message HELLO Validation
-	m0 := deserialized.Messages[0]
+	validateHelloMsg(t, deserialized.Messages[0], origAddr, neigh1)
+	validateTCMsg(t, deserialized.Messages[1], neigh1, neigh2)
+	validateMIDMsg(t, deserialized.Messages[2])
+	validateHNAMsg(t, deserialized.Messages[3])
+	validateSourceClaimMsg(t, deserialized.Messages[4])
+	validateConfirmParentMsg(t, deserialized.Messages[5])
+}
+
+func validateHelloMsg(t *testing.T, m0 Message, origAddr, neigh1 net.IP) {
 	if m0.Header.Type != MsgTypeHello {
 		t.Errorf("expected msg type HELLO, got %d", m0.Header.Type)
 	}
@@ -196,9 +203,9 @@ func TestSerializeDeserializePacket(t *testing.T) {
 	if len(hello.LinkMessages[0].NeighborAddresses) != 1 || !hello.LinkMessages[0].NeighborAddresses[0].Equal(neigh1) {
 		t.Errorf("neigh1 address mismatch")
 	}
+}
 
-	// Message TC Validation
-	m1 := deserialized.Messages[1]
+func validateTCMsg(t *testing.T, m1 Message, neigh1, neigh2 net.IP) {
 	tc, ok := m1.Body.(TCMessage)
 	if !ok {
 		t.Fatalf("failed to cast to TCMessage")
@@ -209,9 +216,9 @@ func TestSerializeDeserializePacket(t *testing.T) {
 	if !tc.NeighborAddresses[0].Equal(neigh1) || !tc.NeighborAddresses[1].Equal(neigh2) {
 		t.Errorf("TC addresses mismatch")
 	}
+}
 
-	// Message MID Validation
-	m2 := deserialized.Messages[2]
+func validateMIDMsg(t *testing.T, m2 Message) {
 	mid, ok := m2.Body.(MIDMessage)
 	if !ok {
 		t.Fatalf("failed to cast to MIDMessage")
@@ -219,9 +226,9 @@ func TestSerializeDeserializePacket(t *testing.T) {
 	if !mid.Addresses[0].Equal(net.ParseIP("10.0.0.1")) {
 		t.Errorf("MID address mismatch")
 	}
+}
 
-	// Message HNA Validation
-	m3 := deserialized.Messages[3]
+func validateHNAMsg(t *testing.T, m3 Message) {
 	hna, ok := m3.Body.(HNAMessage)
 	if !ok {
 		t.Fatalf("failed to cast to HNAMessage")
@@ -233,9 +240,9 @@ func TestSerializeDeserializePacket(t *testing.T) {
 	if maskLen != 24 {
 		t.Errorf("HNA Netmask size mismatch, expected 24, got %d", maskLen)
 	}
+}
 
-	// Message SourceClaim Validation
-	m4 := deserialized.Messages[4]
+func validateSourceClaimMsg(t *testing.T, m4 Message) {
 	sc, ok := m4.Body.(SourceClaimMessage)
 	if !ok {
 		t.Fatalf("failed to cast to SourceClaimMessage")
@@ -243,9 +250,9 @@ func TestSerializeDeserializePacket(t *testing.T) {
 	if !sc.SourceIP.Equal(net.ParseIP("10.10.10.1")) || !sc.GroupID.Equal(net.ParseIP("224.0.0.9")) {
 		t.Errorf("SourceClaim content mismatch")
 	}
+}
 
-	// Message ConfirmParent Validation
-	m5 := deserialized.Messages[5]
+func validateConfirmParentMsg(t *testing.T, m5 Message) {
 	cp, ok := m5.Body.(ConfirmParentMessage)
 	if !ok {
 		t.Fatalf("failed to cast to ConfirmParentMessage")

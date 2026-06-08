@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//nolint // because we cannot modify golangci.yml
 package integration
 
 import (
@@ -30,12 +29,13 @@ import (
 )
 
 const (
+	//nolint:gosec // G101: standalone test key is hardcoded by design for test containers
 	StandaloneJWTSecret   = "e2e-secret-key-for-olsrd"
-	StandR1API             = "http://localhost:8091"
-	StandR2API             = "http://localhost:8092"
-	StandR3API             = "http://localhost:8093"
-	StandR4API             = "http://localhost:8094"
-	StandaloneComposeFile  = "docker-compose-standalone.yml"
+	StandR1API            = "http://localhost:8091"
+	StandR2API            = "http://localhost:8092"
+	StandR3API            = "http://localhost:8093"
+	StandR4API            = "http://localhost:8094"
+	StandaloneComposeFile = "docker-compose-standalone.yml"
 )
 
 func createStandaloneTestToken(subject string) string {
@@ -68,9 +68,11 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 		var cmd *exec.Cmd
 		if composeCmd == "docker compose" {
 			fullArgs := append([]string{"compose", "-f", StandaloneComposeFile}, args...)
+			//nolint:gosec // G204: test code launching docker subprocesses
 			cmd = exec.Command("docker", fullArgs...)
 		} else {
 			fullArgs := append([]string{"-f", StandaloneComposeFile}, args...)
+			//nolint:gosec // G204: test code launching docker-compose subprocesses
 			cmd = exec.Command("docker-compose", fullArgs...)
 		}
 		out, err := cmd.CombinedOutput()
@@ -96,7 +98,15 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 
 	// 4. Test Scenario 1: HNA Route Propagation (Unicast)
 	t.Log("Testing Scenario 1: HNA Route Propagation & Removal...")
-	
+	standaloneTestHNARoutePropagationR1R2(t, token)
+	standaloneTestHNARoutePropagationR3R4(t, token)
+
+	// 5. Test Scenario 2: Multicast MOLSR MFC Installation (Multicast)
+	t.Log("Testing Scenario 2: Multicast MOLSR MFC Installation & Teardown...")
+	standaloneTestMulticastMFCInstallationR1R2(t, token)
+}
+
+func standaloneTestHNARoutePropagationR1R2(t *testing.T, token string) {
 	// Test Pair 1 (r1 -> r2)
 	hna1Payload := map[string]string{"prefix": "192.168.10.0/24"}
 	hna1Bytes, _ := json.Marshal(hna1Payload)
@@ -151,18 +161,20 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	if !removed {
 		t.Fatalf("R2 failed to remove standalone unicast HNA route after R1 deletion")
 	}
+}
 
+func standaloneTestHNARoutePropagationR3R4(t *testing.T, token string) {
 	// Test Pair 2 (r3 -> r4)
 	hna2Payload := map[string]string{"prefix": "192.168.20.0/24"}
 	hna2Bytes, _ := json.Marshal(hna2Payload)
 
-	code, _, err = sendRequest(http.MethodPost, StandR3API+"/api/v1/hna", token, hna2Bytes)
+	code, _, err := sendRequest(http.MethodPost, StandR3API+"/api/v1/hna", token, hna2Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to add HNA prefix to R3: %v (code=%d)", err, code)
 	}
 
 	// Check if R4 learns route to 192.168.20.0/24
-	learned = false
+	learned := false
 	for i := 0; i < 15; i++ {
 		time.Sleep(1 * time.Second)
 		routeCmd := exec.Command("docker", "exec", "olsr-stand-r4", "ip", "route", "show", "192.168.20.0/24")
@@ -184,7 +196,7 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	}
 
 	// Check if R4 removes the route
-	removed = false
+	removed := false
 	for i := 0; i < 15; i++ {
 		time.Sleep(1 * time.Second)
 		routeCmd := exec.Command("docker", "exec", "olsr-stand-r4", "ip", "route", "show", "192.168.20.0/24")
@@ -198,14 +210,13 @@ func TestDockerStandaloneOLSR(t *testing.T) {
 	if !removed {
 		t.Fatalf("R4 failed to remove standalone unicast HNA route after R3 deletion")
 	}
+}
 
-	// 5. Test Scenario 2: Multicast MOLSR MFC Installation (Multicast)
-	t.Log("Testing Scenario 2: Multicast MOLSR MFC Installation & Teardown...")
-
+func standaloneTestMulticastMFCInstallationR1R2(t *testing.T, token string) {
 	// Test Pair 1 (r1 -> r2)
 	sc1Body := map[string]interface{}{"source": "10.10.1.10", "group": "239.2.2.2", "duration_seconds": 60}
 	sc1Bytes, _ := json.Marshal(sc1Body)
-	code, _, err = sendRequest(http.MethodPost, StandR1API+"/api/v1/molsr/source-claims", token, sc1Bytes)
+	code, _, err := sendRequest(http.MethodPost, StandR1API+"/api/v1/molsr/source-claims", token, sc1Bytes)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("failed to inject SourceClaim on R1: %v (code=%d)", err, code)
 	}

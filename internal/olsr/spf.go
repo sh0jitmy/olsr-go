@@ -118,8 +118,72 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 		return fmt.Errorf("local router ID is not set")
 	}
 
-	// 1. Gather all nodes and links to build adjacency list
-	// Map of NodeIP -> list of neighbors (NextNodeIP -> cost)
+	adj := s.buildAdjacencyList(localID)
+	dist, prev := s.runDijkstra(localID, adj)
+
+	newRoutes := make(map[string]Route)
+
+	// Generate host routes (/32) for all reached nodes
+	for nodeIP, d := range dist {
+		if nodeIP == localID {
+			continue
+		}
+		nextHop, ifaceIdx, ok := s.resolveNextHop(nodeIP, prev, localID)
+		if ok {
+			prefix := nodeIP + "/32"
+			newRoutes[prefix] = Route{
+				Prefix:     prefix,
+				NextHop:    nextHop,
+				Metric:     d,
+				IfaceIndex: ifaceIdx,
+			}
+		}
+	}
+
+	// 4. Resolve Gateway HNA Routes
+	hnaEntries := s.hnaMgr.GetHNAEntries()
+	for _, entry := range hnaEntries {
+		if entry.IsLocal {
+			continue
+		}
+		gw := entry.GatewayIP
+		gwDist, reachable := dist[gw]
+		if !reachable {
+			continue
+		}
+
+		nextHop, ifaceIdx, ok := s.resolveNextHop(gw, prev, localID)
+		if ok {
+			prefix := entry.Network.String()
+
+			if existing, ok := newRoutes[prefix]; !ok || gwDist < existing.Metric {
+				newRoutes[prefix] = Route{
+					Prefix:     prefix,
+					NextHop:    nextHop,
+					Metric:     gwDist + 1,
+					IfaceIndex: ifaceIdx,
+				}
+			}
+		}
+	}
+
+	s.diffAndPublishRoutes(ctx, newRoutes)
+	s.activeRoutes = newRoutes
+
+	// Record SPF run metrics (duration, runs)
+	spfDuration := time.Since(startTime).Seconds()
+	s.eventBus.Publish(ctx, eventbus.Event{
+		Type: eventbus.EventSPFTrigger,
+		Data: map[string]interface{}{
+			"duration":    spfDuration,
+			"route_count": len(newRoutes),
+		},
+	})
+
+	return nil
+}
+
+func (s *SPFEngine) buildAdjacencyList(localID string) map[string]map[string]int {
 	adj := make(map[string]map[string]int)
 
 	addLink := func(u, v string, cost int) {
@@ -152,7 +216,10 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 		addLink(t.LastIP, t.DestIP, 1)
 	}
 
-	// 2. Run Dijkstra SPF
+	return adj
+}
+
+func (s *SPFEngine) runDijkstra(localID string, adj map[string]map[string]int) (map[string]int, map[string]string) {
 	dist := make(map[string]int)
 	prev := make(map[string]string)
 	visited := make(map[string]bool)
@@ -180,78 +247,28 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 		}
 	}
 
-	// 3. Resolve NextHops for each destination
-	// For each node D, we backtrack using `prev` to find the first hop from localID
-	newRoutes := make(map[string]Route)
+	return dist, prev
+}
 
-	resolveNextHop := func(dest string) (string, int, bool) {
-		curr := dest
-		for {
-			parent, ok := prev[curr]
-			if !ok {
-				return "", 0, false // Unreachable
-			}
-			if parent == localID {
-				// curr is the first hop
-				ifaceIdx := s.routerID.GetIfaceIndex(curr)
-				return curr, ifaceIdx, true
-			}
-			curr = parent
+func (s *SPFEngine) resolveNextHop(dest string, prev map[string]string, localID string) (string, int, bool) {
+	curr := dest
+	for {
+		parent, ok := prev[curr]
+		if !ok {
+			return "", 0, false
 		}
+		if parent == localID {
+			ifaceIdx := s.routerID.GetIfaceIndex(curr)
+			return curr, ifaceIdx, true
+		}
+		curr = parent
 	}
+}
 
-	// Generate host routes (/32) for all reached nodes
-	for nodeIP, d := range dist {
-		if nodeIP == localID {
-			continue
-		}
-		nextHop, ifaceIdx, ok := resolveNextHop(nodeIP)
-		if ok {
-			prefix := nodeIP + "/32"
-			newRoutes[prefix] = Route{
-				Prefix:     prefix,
-				NextHop:    nextHop,
-				Metric:     d,
-				IfaceIndex: ifaceIdx,
-			}
-		}
-	}
-
-	// 4. Resolve Gateway HNA Routes
-	// For each network advertised via HNA, install route to it via the best gateway
-	hnaEntries := s.hnaMgr.GetHNAEntries()
-	for _, entry := range hnaEntries {
-		if entry.IsLocal {
-			continue // Don't route to our own advertised external prefixes
-		}
-		gw := entry.GatewayIP
-		// Get distance to gateway
-		gwDist, reachable := dist[gw]
-		if !reachable {
-			continue // Gateway is currently unreachable
-		}
-
-		nextHop, ifaceIdx, ok := resolveNextHop(gw)
-		if ok {
-			prefix := entry.Network.String()
-
-			// If route already exists (e.g. from a different gateway), keep the one with shorter path
-			if existing, ok := newRoutes[prefix]; !ok || gwDist < existing.Metric {
-				newRoutes[prefix] = Route{
-					Prefix:     prefix,
-					NextHop:    nextHop,
-					Metric:     gwDist + 1, // Gateway cost + 1 to reach external network
-					IfaceIndex: ifaceIdx,
-				}
-			}
-		}
-	}
-
-	// 5. Diff and publish route installs/deletions
+func (s *SPFEngine) diffAndPublishRoutes(ctx context.Context, newRoutes map[string]Route) {
 	for prefix, oldRoute := range s.activeRoutes {
 		newRoute, exists := newRoutes[prefix]
 		if !exists {
-			// Route withdrawn
 			s.eventBus.Publish(ctx, eventbus.Event{
 				Type: eventbus.EventRouteInstall,
 				Data: map[string]interface{}{
@@ -260,18 +277,16 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 				},
 			})
 		} else if oldRoute.NextHop != newRoute.NextHop || oldRoute.IfaceIndex != newRoute.IfaceIndex {
-			// Route updated
 			s.eventBus.Publish(ctx, eventbus.Event{
 				Type: eventbus.EventRouteInstall,
 				Data: map[string]interface{}{
-					"action": "add", // Add works as update in Zebra
+					"action": "add",
 					"route":  newRoute,
 				},
 			})
 		}
 	}
 
-	// Brand new routes
 	for prefix, newRoute := range newRoutes {
 		if _, exists := s.activeRoutes[prefix]; !exists {
 			s.eventBus.Publish(ctx, eventbus.Event{
@@ -283,20 +298,6 @@ func (s *SPFEngine) CalculateRoutes(ctx context.Context) error {
 			})
 		}
 	}
-
-	s.activeRoutes = newRoutes
-
-	// Record SPF run metrics (duration, runs)
-	spfDuration := time.Since(startTime).Seconds()
-	s.eventBus.Publish(ctx, eventbus.Event{
-		Type: eventbus.EventSPFTrigger,
-		Data: map[string]interface{}{
-			"duration":    spfDuration,
-			"route_count": len(newRoutes),
-		},
-	})
-
-	return nil
 }
 
 // GetRoutes returns the active unicast routes

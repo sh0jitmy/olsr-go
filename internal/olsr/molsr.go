@@ -293,6 +293,12 @@ func (m *MOLSRManager) RecalculateMroutes(ctx context.Context, getUnicastNextHop
 		return // Cannot resolve interfaces
 	}
 
+	newMfc := m.buildNewMFC(getUnicastNextHop)
+	m.syncMFCRoutes(ctx, newMfc)
+	m.activeMfc = newMfc
+}
+
+func (m *MOLSRManager) buildNewMFC(getUnicastNextHop func(dest string) (string, int, error)) map[string]*MulticastForwardingEntry {
 	newMfc := make(map[string]*MulticastForwardingEntry)
 
 	// Traverse confirm parents. If we received CONFIRM PARENT designating us, we must forward
@@ -335,7 +341,10 @@ func (m *MOLSRManager) RecalculateMroutes(ctx context.Context, getUnicastNextHop
 			}
 		}
 	}
+	return newMfc
+}
 
+func (m *MOLSRManager) syncMFCRoutes(ctx context.Context, newMfc map[string]*MulticastForwardingEntry) {
 	// Determine changes between old active MFC and new MFC to trigger ZAPI router updates
 	for key, oldEntry := range m.activeMfc {
 		newEntry, exists := newMfc[key]
@@ -384,8 +393,6 @@ func (m *MOLSRManager) RecalculateMroutes(ctx context.Context, getUnicastNextHop
 			})
 		}
 	}
-
-	m.activeMfc = newMfc
 }
 
 // GetSourceClaims returns all active source claims
