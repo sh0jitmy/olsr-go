@@ -1,5 +1,6 @@
 # olsrd-go: Go言語によるOLSRルーティングデーモン
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/sh0jitmy/olsr-go.svg)](https://pkg.go.dev/github.com/sh0jitmy/olsr-go)
 [![CI Status](https://github.com/sh0jitmy/olsr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sh0jitmy/olsr-go/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sh0jitmy/olsr-go)](https://goreportcard.com/report/github.com/sh0jitmy/olsr-go)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
