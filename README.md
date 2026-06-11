@@ -33,8 +33,15 @@ graph TD
     FRR -->|Kernel Table| UnicastRoutes[Linux Unicast Routing Table]
 
     EventBus -->|Trigger| MOLSRMgr
-    MOLSRMgr -->|Computed MFC Entries| KernelMRoute[Linux Kernel Multicast Router]
-    KernelMRoute -->|Raw IGMP Socket setsockopt| MCRoutes[Linux Multicast Routing Table]
+    MOLSRMgr -->|Computed Forwarding State| MRouter[Multicast Router Switch]
+    MRouter -->|Standalone Mode: LinuxMulticastRouter| KernelMRoute[Linux Kernel ipmr]
+    MRouter -->|FRR Mode: VTYSHMulticastRouter| VTYSH[vtysh CLI]
+    VTYSH -->|ip mroute| PIMD[FRRouting pimd]
+    PIMD -->|Kernel Table| KernelMRoute
+    KernelMRoute -->|Linux MFC| MCRoutes[Linux Multicast Routing Table]
+
+    EventBus -->|Route Add/Delete Event| LoopPrev[Loop Prevention Manager]
+    LoopPrev -->|nftables / nfqueue Mode| Netfilter[Linux Netfilter]
 
     Monitor[Netlink Interface Monitor] -->|Event: Link/Addr Change| EventBus
     APIServer[REST API Server] <--> NeighborMgr & TopoMgr & HNAMgr & MOLSRMgr & ZAPI
@@ -60,12 +67,21 @@ graph TD
   1. A multicast source floods a `SOURCE CLAIM` packet.
   2. Receivers determine the next-hop node toward the source based on the unicast SPF tree and unicast a `CONFIRM PARENT` packet to that next-hop.
   3. Intermediate nodes receiving a `CONFIRM PARENT` that designates them as a parent will register the child's interface and forward the registration upstream, forming a source-rooted distribution tree.
-- **Direct Kernel Programming**:
-  Because standard Zebra ZAPI does not support multicast forwarding cache manipulation commands, `olsrd-go` directly programs the Linux kernel's multicast routing table (`ipmr` subsystem) using a raw IGMP socket.
-  - Opens a socket: `unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_IGMP)`.
-  - Initializes multicast routing: `setsockopt(fd, IPPROTO_IP, MRT_INIT, 1)`.
-  - Registers virtual interfaces (VIFs) representing physical network interfaces: `setsockopt(fd, IPPROTO_IP, MRT_ADD_VIF, &vifctl)`.
-  - Installs Multicast Forwarding Cache (MFC) entries: `setsockopt(fd, IPPROTO_IP, MRT_ADD_MFC, &mfcctl)`.
+
+- **Multicast Router Abstraction & Coexistence with FRRouting**:
+  Because the Linux kernel allows only a single process to initialize and own the multicast routing socket (via `MRT_INIT`), direct configuration conflict arises when `olsrd-go` and FRR's `pimd` run simultaneously. To resolve this:
+  - **Standalone Mode (Linux Kernel Backend)**: When running without FRR, `olsrd-go` initializes the multicast socket (`MRT_INIT`) and directly programs the Linux kernel's multicast forwarding cache (MFC) via raw IGMP socket `setsockopt` calls (`MRT_ADD_MFC`/`MRT_ADD_VIF`).
+  - **FRR Integration Mode (VTYSH Backend)**: When integrated with FRR, `pimd` initializes and holds the multicast socket. `olsrd-go` delegates the MFC management by executing `vtysh` CLI commands to register static multicast routes under the interface context (`ip mroute <oif> <grp> <src>`). It also ensures PIM is enabled on active interfaces (`ip pim`) at startup to register them as valid multicast virtual interfaces (VIFs) in `pimd`.
+
+- **Multicast Loop Prevention (Wireless-to-Wireless Relay)**:
+  In wireless ad-hoc and mesh environments, multicast routing often requires forwarding packets back out of the same physical interface they were received on (wireless-to-wireless relay, or hairpinning). Under standard L3 multicast rules:
+  - Loopfree enforcement and standard multicast routing protocols do not allow forwarding out of the incoming interface (IIF), leading to packet drops or routing loops.
+  - While static routes configured via `vtysh` can force the routing, the shared nature of the wireless medium causes nodes to hear their own or duplicate transmissions from other relays, triggering infinite packet duplication (loops).
+  
+  To solve this, `olsrd-go` implements a layer-2 (MAC address) level filtering mechanism that ensures a node only accepts multicast packets originating from its designated **parent node** in the MOLSR tree:
+  - **`none` Mode**: No loop prevention filtering is applied.
+  - **`nftables` Mode**: Dynamically generates MAC-based filter rules in the netfilter `prerouting` chain using resolved parent MAC addresses from `/proc/net/arp`. It accepts multicast packets from the parent MAC and drops all others on the interface.
+  - **`nfqueue` Mode**: Redirects multicast packets to user-space via Netfilter queue (`NFQUEUE`). The daemon inspects packet source hardware metadata (`NFQA_HWADDR`) using a pure Go Netfilter Netlink queue library, accepting packets from the designated parent MAC and dropping duplicate packets without external CLI overhead.
 
 ### 3. Standalone Routing Mode
 
@@ -90,7 +106,8 @@ The integration test suite validates unicast route propagation and multicast MFC
 #### Topology Environment
 - **Pair 1**: `r1` (`10.10.1.10`) and `r2` (`10.10.1.20`) on subnet `10.10.1.0/24`.
 - **Pair 2**: `r3` (`10.10.2.30`) and `r4` (`10.10.2.40`) on subnet `10.10.2.0/24`.
-- Each service runs the FRR Zebra daemon and `olsrd-go`. Other multicast routing daemons (such as `pimd`) are disabled in the containers to prevent raw socket conflicts on `MRT_INIT`.
+- **Loopback IPs**: `lo` interfaces are configured with loopback IPs (`10.10.100.X/32`) so `pimd` can register them as valid multicast interfaces.
+- **Daemons**: Each service runs the FRR Zebra daemon and `olsrd-go`. In FRR Integration Mode, FRRouting's `pimd` multicast routing daemon is enabled and handles `MRT_INIT`, while `olsrd-go` programs static multicast routes via `vtysh`. In Standalone Mode, `pimd` is disabled and `olsrd-go` manages `MRT_INIT` directly.
 
 #### Run Integration Tests (Zebra Mode)
 ```bash

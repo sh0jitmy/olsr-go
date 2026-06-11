@@ -37,8 +37,9 @@ type Config struct {
 	Metrics       MetricsConfig `yaml:"metrics"`
 	APIPort       int           `yaml:"api_port"`
 	JWTSecret     string        `yaml:"jwt_secret"`
-	ZAPIAddress   string        `yaml:"zapi_address"`
-	Standalone    bool          `yaml:"standalone"`
+	ZAPIAddress             string        `yaml:"zapi_address"`
+	Standalone              bool          `yaml:"standalone"`
+	MulticastLoopPrevention string        `yaml:"multicast_loop_prevention"`
 }
 
 type Manager struct {
@@ -104,6 +105,7 @@ func loadAndValidate(path string) (*Config, error) {
 	cfg.APIPort = 8080
 	cfg.ZAPIAddress = "/var/run/frr/zserv.api"
 	cfg.JWTSecret = "olsr-default-jwt-secret-key-must-be-changed"
+	cfg.MulticastLoopPrevention = "none"
 
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse yaml config: %w", err)
@@ -152,6 +154,11 @@ func validate(cfg *Config) error {
 	// Metrics validation
 	if cfg.Metrics.Type != "etx" && cfg.Metrics.Type != "hopcount" && cfg.Metrics.Type != "" {
 		return fmt.Errorf("invalid metrics type: %s (must be 'etx' or 'hopcount')", cfg.Metrics.Type)
+	}
+
+	// MulticastLoopPrevention validation
+	if cfg.MulticastLoopPrevention != "none" && cfg.MulticastLoopPrevention != "nftables" && cfg.MulticastLoopPrevention != "nfqueue" && cfg.MulticastLoopPrevention != "" {
+		return fmt.Errorf("invalid multicast_loop_prevention type: %s (must be 'none', 'nftables', or 'nfqueue')", cfg.MulticastLoopPrevention)
 	}
 
 	return nil
