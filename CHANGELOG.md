@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.2](https://github.com/sh0jitmy/olsr-go/compare/v0.0.1...v0.0.2) - 2026-06-11
+
+- Create SECURITY.md for security policy by @sh0jitmy in https://github.com/sh0jitmy/olsr-go/pull/17
+- chore: add go reference by @sh0jitmy in https://github.com/sh0jitmy/olsr-go/pull/19
+- improve multicast by @sh0jitmy in https://github.com/sh0jitmy/olsr-go/pull/20
+
 ## [v0.0.1](https://github.com/sh0jitmy/olsr-go/commits/v0.0.1) - 2026-06-08
 
 - add ci env files by @sh0jitmy in https://github.com/sh0jitmy/olsr-go/pull/1
