@@ -48,6 +48,7 @@ type Daemon struct {
 	zapiClient   *zebra.ZAPIClient
 	urouteRouter uroute.UnicastRouter
 	mrouteRouter mroute.MulticastRouter
+	loopPrevMgr  mroute.LoopPreventionManager
 	monitor      netlink.Monitor
 	apiServer    *api.APIServer
 	Standalone   bool
@@ -84,7 +85,8 @@ func (d *Daemon) initializeComponents() {
 		d.zapiClient = zebra.NewZAPIClient(cfg.ZAPIAddress, d.eventBus)
 	}
 	d.urouteRouter = uroute.NewUnicastRouter()
-	d.mrouteRouter = mroute.NewMulticastRouter()
+	d.mrouteRouter = mroute.NewMulticastRouter(d.Standalone, cfg.Interfaces)
+	d.loopPrevMgr = mroute.NewLoopPreventionManager(cfg.MulticastLoopPrevention)
 	d.monitor = netlink.NewMonitor(d.eventBus)
 
 	// API Server
@@ -182,11 +184,16 @@ func (d *Daemon) Stop() {
 	if d.mrouteRouter != nil {
 		_ = d.mrouteRouter.Stop()
 	}
+	if d.loopPrevMgr != nil {
+		_ = d.loopPrevMgr.Stop()
+	}
 	d.monitor.Stop()
 	slog.Info("OLSR Go Routing Daemon stopped.")
 }
 
 func (d *Daemon) run() {
+	cfg := d.cfgMgr.Get()
+
 	metricsStop := make(chan struct{})
 	defer close(metricsStop)
 	metrics.StartSystemMetricsCollector(metricsStop)
@@ -198,6 +205,11 @@ func (d *Daemon) run() {
 	if d.mrouteRouter != nil {
 		if err := d.mrouteRouter.Start(); err != nil {
 			slog.Error("Failed to start kernel multicast router", "error", err)
+		}
+	}
+	if d.loopPrevMgr != nil {
+		if err := d.loopPrevMgr.Start(d.ctx, cfg.Interfaces); err != nil {
+			slog.Error("Failed to start multicast loop prevention manager", "error", err)
 		}
 	}
 	_ = d.apiServer.Start(d.ctx)
@@ -219,7 +231,6 @@ func (d *Daemon) run() {
 	go d.spfExecutionMetricsLoop(subSPF)
 	go d.udpReceiverLoop()
 
-	cfg := d.cfgMgr.Get()
 	helloTicker := time.NewTicker(cfg.HelloInterval)
 	tcTicker := time.NewTicker(cfg.TCInterval)
 	hnaTicker := time.NewTicker(cfg.TCInterval)
@@ -345,6 +356,16 @@ func (d *Daemon) handleMulticastAdd(entry *olsr.MulticastForwardingEntry) {
 			metrics.ZapiTxTotal.Inc()
 		}
 	}
+	if d.loopPrevMgr != nil {
+		nextHopIP, _, err := d.spfEngine.GetNextHopForDest(entry.SourceIP)
+		if err == nil {
+			if err := d.loopPrevMgr.OnMulticastRouteAdd(entry.SourceIP, entry.GroupID, nextHopIP); err != nil {
+				slog.Error("Failed to add multicast loop prevention rule", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
+			}
+		} else {
+			slog.Warn("No next hop found for multicast source to apply loop prevention", "src", entry.SourceIP, "error", err)
+		}
+	}
 }
 
 func (d *Daemon) handleMulticastDelete(entry *olsr.MulticastForwardingEntry) {
@@ -355,6 +376,11 @@ func (d *Daemon) handleMulticastDelete(entry *olsr.MulticastForwardingEntry) {
 			metrics.ZapiFailureTotal.Inc()
 		} else {
 			metrics.ZapiTxTotal.Inc()
+		}
+	}
+	if d.loopPrevMgr != nil {
+		if err := d.loopPrevMgr.OnMulticastRouteDelete(entry.SourceIP, entry.GroupID); err != nil {
+			slog.Error("Failed to delete multicast loop prevention rule", "src", entry.SourceIP, "grp", entry.GroupID, "error", err)
 		}
 	}
 }

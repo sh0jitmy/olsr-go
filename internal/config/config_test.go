@@ -41,6 +41,7 @@ hello_interval: 2s
 tc_interval: 5s
 metrics:
   type: etx
+multicast_loop_prevention: nfqueue
 `
 	tmpFile := writeTempFile(t, content)
 	mgr := NewManager(tmpFile)
@@ -64,6 +65,9 @@ metrics:
 	}
 	if cfg.Metrics.Type != "etx" {
 		t.Errorf("expected metrics type etx, got %s", cfg.Metrics.Type)
+	}
+	if cfg.MulticastLoopPrevention != "nfqueue" {
+		t.Errorf("expected multicast_loop_prevention nfqueue, got %s", cfg.MulticastLoopPrevention)
 	}
 }
 
@@ -140,6 +144,18 @@ metrics:
   type: invalid_metric
 `,
 			wantErr: "invalid metrics type: invalid_metric",
+		},
+		{
+			name: "invalid multicast_loop_prevention type",
+			yaml: `
+router_id: 1.1.1.1
+interfaces:
+  - eth0
+hello_interval: 2s
+tc_interval: 5s
+multicast_loop_prevention: invalid_prevention
+`,
+			wantErr: "invalid multicast_loop_prevention type: invalid_prevention",
 		},
 	}
 

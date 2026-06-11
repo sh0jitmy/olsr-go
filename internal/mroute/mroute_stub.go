@@ -18,7 +18,10 @@ package mroute
 
 type StubMulticastRouter struct{}
 
-func NewMulticastRouter() MulticastRouter {
+func NewMulticastRouter(standalone bool, interfaces []string) MulticastRouter {
+	if !standalone {
+		return NewVTYSHMulticastRouter(interfaces)
+	}
 	return &StubMulticastRouter{}
 }
 

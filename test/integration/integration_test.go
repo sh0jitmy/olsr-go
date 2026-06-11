@@ -269,6 +269,9 @@ func integrationTestMulticastMFCInstallationR1R2(t *testing.T, token string) {
 		}
 	}
 	if !mrouteProgrammed {
+		logsCmd := exec.Command("docker", "logs", "olsr-int-r2")
+		logsOut, _ := logsCmd.CombinedOutput()
+		t.Logf("DIAGNOSTIC: docker logs olsr-int-r2:\n%s", string(logsOut))
 		t.Fatalf("R2 failed to program kernel multicast forwarding cache")
 	}
 

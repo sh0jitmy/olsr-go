@@ -16,7 +16,7 @@
 
 ```mermaid
 graph TD
-    UDP[ポート698のUDPソケット] <--> PacketSerializer[パケットシリアライザ/デシリアライザ]
+    UDP[ポート698 of UDPソケット] <--> PacketSerializer[パケットシリアライザ/デシリアライザ]
     PacketSerializer <--> NeighborMgr[ネイバーマネージャー]
     PacketSerializer <--> TopoMgr[トポロジー & MIDマネージャー]
     PacketSerializer <--> HNAMgr[HNAマネージャー]
@@ -33,8 +33,15 @@ graph TD
     FRR -->|カーネルテーブル| UnicastRoutes[Linuxユニキャストルーティングテーブル]
 
     EventBus -->|トリガー| MOLSRMgr
-    MOLSRMgr -->|計算されたMFCエントリ| KernelMRoute[Linuxカーネルマルチキャストルーター]
-    KernelMRoute -->|生IGMPソケットのsetsockopt| MCRoutes[Linuxマルチキャストルーティングテーブル]
+    MOLSRMgr -->|計算された転送状態| MRouter[マルチキャストルーターの切り替え]
+    MRouter -->|スタンドアロンモード: LinuxMulticastRouter| KernelMRoute[Linuxカーネル ipmr]
+    MRouter -->|FRRモード: VTYSHMulticastRouter| VTYSH[vtysh CLI]
+    VTYSH -->|ip mroute| PIMD[FRRouting pimd]
+    PIMD -->|カーネル設定| KernelMRoute
+    KernelMRoute -->|Linux MFC| MCRoutes[Linuxマルチキャストルーティングテーブル]
+
+    EventBus -->|ルート追加/削除イベント| LoopPrev[ループ防止マネージャー]
+    LoopPrev -->|nftables / nfqueueモード| Netfilter[Linuxネットフィルター]
 
     Monitor[Netlinkインターフェースモニター] -->|イベント: リンク/アドレス変更| EventBus
     APIServer[REST APIサーバー] <--> NeighborMgr & TopoMgr & HNAMgr & MOLSRMgr & ZAPI
@@ -60,12 +67,21 @@ graph TD
   1. マルチキャスト送信元が `SOURCE CLAIM` パケットをフラッディングします。
   2. 受信ノードは、ユニキャストSPFツリーに基づいて送信元方向への次のホップ（親ノード）を決定し、その次のホップに対して `CONFIRM PARENT` パケットをユニキャストで送信します。
   3. 自分自身を親ノードとして指定する `CONFIRM PARENT` を受信した中間ノードは、その子ノードへのインターフェースを登録し、さらに上流へ登録を転送することで、送信元を根とする配信ツリーを形成します。
-- **直接カーネルプログラミング**:
-  標準のZebra ZAPIはマルチキャスト転送キャッシュを操作するコマンドをサポートしていないため、`olsrd-go` は生のIGMPソケットを使用してLinuxカーネルのマルチキャストルーティングテーブル（`ipmr`サブシステム）を直接プログラムします。
-  - ソケットを開く: `unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_IGMP)`
-  - マルチキャストルーティングの初期化: `setsockopt(fd, IPPROTO_IP, MRT_INIT, 1)`
-  - 物理インターフェースを表す仮想インターフェース（VIF）の登録: `setsockopt(fd, IPPROTO_IP, MRT_ADD_VIF, &vifctl)`
-  - マルチキャスト転送キャッシュ（MFC）エントリのインストール: `setsockopt(fd, IPPROTO_IP, MRT_ADD_MFC, &mfcctl)`
+
+- **マルチキャストルーターの抽象化と FRRouting との共存**:
+  Linuxカーネルの仕様上、マルチキャストルーティングソケット（`MRT_INIT`）を初期化して所有できるプロセスはシステム全体で1つのみです。このため、`olsrd-go` と FRR の `pimd` を同時に起動すると、直接カーネルを操作する際に競合が発生します。この競合を解決するため、以下の抽象化レイヤーを設けています。
+  - **スタンドアロンモード (Linuxカーネル直接制御)**: FRRを使用しない場合、`olsrd-go` が自身でマルチキャストソケットを初期化 (`MRT_INIT`) し、生のIGMPソケットの `setsockopt` 呼び出し (`MRT_ADD_MFC`/`MRT_ADD_VIF`) を用いて、Linuxカーネル의 マルチキャスト転送キャッシュ（MFC）を直接制御します。
+  - **FRR連携モード (VTYSH制御)**: FRRと共存する場合、`pimd` がマルチキャストソケットを保持します。`olsrd-go` は直接カーネルを操作せず、`vtysh` CLIコマンドを実行して `pimd` のコンテキスト下で静的なマルチキャストルート (`ip mroute <oif> <grp> <src>`) を登録することで、経路制御を `pimd` に委ねます。また、起動時に監視対象のインターフェースで PIM を有効化 (`ip pim`) し、`pimd` がそれらを仮想マルチキャストインターフェース（VIF）として認識できるようにします。
+
+- **マルチキャストループ防止機能 (無線-to-無線中継)**:
+  無線アドホック・メッシュネットワーク環境では、マルチキャストパケットを受信した物理インターフェースと同一のインターフェースから送信（無線-to-無線の中継、いわゆるヘアピン転送）する必要が頻繁に生じます。しかし、通常のL3マルチキャストルーティングでは以下の問題があります。
+  - 標準的なL3マルチキャストおよびルーティングデーモン（`pimd`など）の仕様上、入力インターフェース（IIF）と出力インターフェース（OIF）が同一となるルートはループ防止ポリシー（Split Horizonなど）により拒否またはドロップされます。
+  - `vtysh` で静的ルートを強制的に設定した場合でも、無線という共有媒体の性質上、隣接ノードが中継した重複パケットを自身が再び受信して再転送してしまい、無限パケットループ（重複パケットの氾濫）が発生します。
+
+  この問題を解決するため、`olsrd-go` はL2（MACアドレス）レベルのフィルタリングメカニズムを実装し、MOLSRツリー上で「親ノードとして認めた特定の隣接ノード」から送信されたパケットのみを受理し、それ以外の重複した中継パケットを破棄します。
+  - **`none` モード**: ループ防止フィルタリングを行いません。
+  - **`nftables` モード**: `/proc/net/arp` から解決した親ノードのMACアドレスをもとに、`nftables` の `prerouting` チェーンに動的なMACフィルタールールを生成します。親ノードのMACアドレスからのマルチキャストパケットのみを許可し、他をドロップします。
+  - **`nfqueue` モード**: Netfilter queue (`NFQUEUE`) を使用してマルチキャストパケットをユーザー空間（Go）に転送します。純粋なGo言語の Netfilter Netlink ライブラリを用いて、パケット受信時のハードウェアメタデータ（`NFQA_HWADDR`）を解析し、親ノードのMACアドレスと合致するパケットのみを許可（`NF_ACCEPT`）し、重複パケットを破棄（`NF_DROP`）します。外部CLI（`nft` コマンドなど）を実行するオーバーヘッドがなく、軽量に処理できます。
 
 ### 3. スタンドアロンルーティングモード (Standalone Mode)
 
@@ -90,7 +106,8 @@ make test
 #### トポロジー環境
 - **ペア 1**: `r1` (`10.10.1.10`) と `r2` (`10.10.1.20`)。サブネット: `10.10.1.0/24`
 - **ペア 2**: `r3` (`10.10.2.30`) と `r4` (`10.10.2.40`)。サブネット: `10.10.2.0/24`
-- 各コンテナサービスはFRR Zebraデーモンと `olsrd-go` を実行します。他のマルチキャストルーティングデーモン（`pimd` など）は、生のソケットの `MRT_INIT` 競合を防ぐためにコンテナ内で無効化されています。
+- **ループバックIP**: `lo` インターフェースには、`pimd` が仮想マルチキャストインターフェースとして認識できるように loopback IP (`10.10.100.X/32`) が設定されます。
+- **起動デーモン**: 各コンテナサービスはFRR Zebraデーモンと `olsrd-go` を実行します。FRR連携モードでは、FRRoutingのマルチキャストルーティングデーモンである `pimd` が有効化され `MRT_INIT` を保持し、`olsrd-go` は `vtysh` を介して静的マルチキャストルートを登録します。スタンドアロンモードでは、`pimd` は無効化され、`olsrd-go` が直接 `MRT_INIT` を管理します。
 
 #### 結合テストの実行 (Zebra連携モード)
 ```bash

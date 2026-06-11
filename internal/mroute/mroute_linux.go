@@ -69,7 +69,10 @@ type LinuxMulticastRouter struct {
 	nextVif uint16
 }
 
-func NewMulticastRouter() MulticastRouter {
+func NewMulticastRouter(standalone bool, interfaces []string) MulticastRouter {
+	if !standalone {
+		return NewVTYSHMulticastRouter(interfaces)
+	}
 	return &LinuxMulticastRouter{
 		fd:     -1,
 		vifMap: make(map[int]uint16),

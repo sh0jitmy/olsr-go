@@ -28,8 +28,10 @@ services:
       - ./config/daemons:/etc/frr/daemons
     command: >
       /bin/sh -c "
+      ip addr add 10.10.100.10/32 dev lo &&
       sleep 2 &&
       /usr/lib/frr/zebra -d &&
+      /usr/lib/frr/pimd -d &&
       sleep 1 &&
       /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
       "
@@ -49,8 +51,10 @@ services:
       - ./config/daemons:/etc/frr/daemons
     command: >
       /bin/sh -c "
+      ip addr add 10.10.100.20/32 dev lo &&
       sleep 2 &&
       /usr/lib/frr/zebra -d --log file:/tmp/zebra.log --log-level debug &&
+      /usr/lib/frr/pimd -d --log file:/tmp/pimd.log --log-level debug &&
       sleep 1 &&
       /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
       "
@@ -70,8 +74,10 @@ services:
       - ./config/daemons:/etc/frr/daemons
     command: >
       /bin/sh -c "
+      ip addr add 10.10.100.30/32 dev lo &&
       sleep 2 &&
       /usr/lib/frr/zebra -d &&
+      /usr/lib/frr/pimd -d &&
       sleep 1 &&
       /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
       "
@@ -91,8 +97,10 @@ services:
       - ./config/daemons:/etc/frr/daemons
     command: >
       /bin/sh -c "
+      ip addr add 10.10.100.40/32 dev lo &&
       sleep 2 &&
       /usr/lib/frr/zebra -d &&
+      /usr/lib/frr/pimd -d &&
       sleep 1 &&
       /usr/local/bin/olsrd-go --config /etc/olsrd/olsrd.yaml
       "
