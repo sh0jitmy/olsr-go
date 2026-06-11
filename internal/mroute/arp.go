@@ -29,7 +29,7 @@ func ResolveMACFromARP(ipAddr string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open /proc/net/arp: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	// Skip header line

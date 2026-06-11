@@ -30,13 +30,13 @@ type MetricsConfig struct {
 }
 
 type Config struct {
-	RouterID      string        `yaml:"router_id"`
-	Interfaces    []string      `yaml:"interfaces"`
-	HelloInterval time.Duration `yaml:"hello_interval"`
-	TCInterval    time.Duration `yaml:"tc_interval"`
-	Metrics       MetricsConfig `yaml:"metrics"`
-	APIPort       int           `yaml:"api_port"`
-	JWTSecret     string        `yaml:"jwt_secret"`
+	RouterID                string        `yaml:"router_id"`
+	Interfaces              []string      `yaml:"interfaces"`
+	HelloInterval           time.Duration `yaml:"hello_interval"`
+	TCInterval              time.Duration `yaml:"tc_interval"`
+	Metrics                 MetricsConfig `yaml:"metrics"`
+	APIPort                 int           `yaml:"api_port"`
+	JWTSecret               string        `yaml:"jwt_secret"`
 	ZAPIAddress             string        `yaml:"zapi_address"`
 	Standalone              bool          `yaml:"standalone"`
 	MulticastLoopPrevention string        `yaml:"multicast_loop_prevention"`
